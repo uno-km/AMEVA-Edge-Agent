@@ -15,5 +15,5 @@ if [ ! -f "$VENV_PYTHON" ]; then
     VENV_PYTHON="python3"
 fi
 
-# 가상환경 파이썬으로 main.py를 실행하며 스크립트에 전달된 인자($@)를 그대로 전달
-exec "$VENV_PYTHON" "${SRC_DIR}/main.py" "$@"
+# 가상환경 파이썬으로 main_edge.py를 실행하며 스크립트에 전달된 인자($@)를 그대로 전달
+exec "$VENV_PYTHON" "${SRC_DIR}/main_edge.py" "$@"

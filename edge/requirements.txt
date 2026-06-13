@@ -1,0 +1,5 @@
+# AMEVA Edge Agent Requirements
+# 
+# 에이전트는 100% 파이썬 표준 라이브러리(Standard Library)를 사용하므로
+# 추가적인 외부 패키지 설치가 필요 없습니다.
+# (Termux 환경에서의 의존성 오류 방지 및 가벼운 리소스를 위해 설계됨)

@@ -75,7 +75,7 @@ mkdir -p "${AGENT_DIR}/src"
 # 4. 소스 코드 복사 (현재 개발 디렉토리에서 고정 경로로 전송)
 echo -e "[동기화] 개발 소스 파일을 고정 폴더로 복사합니다..."
 cp -r src/* "${AGENT_DIR}/src/"
-cp main.py "${AGENT_DIR}/"
+cp main_edge.py "${AGENT_DIR}/"
 cp run.sh "${AGENT_DIR}/"
 chmod +x "${AGENT_DIR}/run.sh"
 
