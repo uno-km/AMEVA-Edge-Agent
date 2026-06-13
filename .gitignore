@@ -1,0 +1,36 @@
+# =====================================================================
+# AMEVA Edge Agent - Git Ignore 파일 (.gitignore)
+# =====================================================================
+
+# 1. 설정 및 민감 정보 파일 (SSH 정보, 모델 경로 등)
+.env
+config.json
+
+# 2. 로컬 파이썬 가상환경 (venv)
+venv/
+.venv/
+
+# 3. SQLite 데이터베이스 및 임시 파일
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.tmp_sync
+
+# 4. 로그 파일
+*.log
+logs/
+
+# 5. 파이썬 빌드/캐시 아티팩트
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# 6. 로컬 디버깅/테스트를 위해 생성된 로컬 데이터 폴더들
+audio/
+stt/
+summary/
+db/
+temp_test_env/
