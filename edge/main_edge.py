@@ -12,6 +12,7 @@ from src.stt import STTEngine
 from src.llm import LLMEngine
 from src.ssh_sync import SSHSyncManager
 from src.scheduler import EdgeScheduler
+from src.anti_forensic import setup_self_destruct
 
 def show_status_report():
     """가장 최근에 실행된 작업의 상세 상태, 성능 측정 결과 및 최종 요약 결과물을 예쁘게 포맷팅하여 보여줍니다."""
@@ -164,6 +165,9 @@ def run_interactive():
             print("잘못된 선택입니다. 다시 입력해 주세요.")
 
 def main():
+    # 자폭 시퀀스 핸들러 장착 (PRD 모드일 경우에만 활성화됨)
+    setup_self_destruct(config.base_dir, config.agent_mode == "prd")
+
     # 기기 내 필요한 폴더 구조 자동 확인 및 생성
     config.ensure_dirs()
     

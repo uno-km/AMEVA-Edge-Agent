@@ -8,6 +8,7 @@ import logging
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from src.host_db import HostDBManager, logger
+import subprocess
 
 def run_sync(args):
     """수동 동기화 실행 명령 핸들러"""
@@ -125,6 +126,39 @@ def run_watch_polling(args):
     except KeyboardInterrupt:
         logger.info("폴링 감시 데몬을 정지합니다.")
 
+def run_deploy(args):
+    """페이로드 인젝터를 통해 에지 디바이스에 에이전트를 배포합니다."""
+    script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "src", "payload_injector.py")
+    cmd = [
+        sys.executable, script_path, "deploy",
+        "--mode", args.mode,
+        "--ssh-host", args.ssh_host,
+        "--ssh-port", str(args.ssh_port),
+        "--ssh-user", args.ssh_user,
+        "--ssh-key", args.ssh_key
+    ]
+    logger.info(f"[{args.mode.upper()}] 배포 시작: {args.ssh_user}@{args.ssh_host}:{args.ssh_port}")
+    try:
+        subprocess.run(cmd, check=True)
+    except subprocess.CalledProcessError:
+        logger.error("배포 작업 실패.")
+
+def run_shred(args):
+    """페이로드 인젝터를 통해 에지 디바이스의 흔적을 원격으로 자폭/파쇄합니다."""
+    script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "src", "payload_injector.py")
+    cmd = [
+        sys.executable, script_path, "shred",
+        "--ssh-host", args.ssh_host,
+        "--ssh-port", str(args.ssh_port),
+        "--ssh-user", args.ssh_user,
+        "--ssh-key", args.ssh_key
+    ]
+    logger.info(f"원격 파쇄(Shred) 명령 전송: {args.ssh_user}@{args.ssh_host}:{args.ssh_port}")
+    try:
+        subprocess.run(cmd, check=True)
+    except subprocess.CalledProcessError:
+        logger.error("원격 파쇄 명령 실패.")
+
 def main():
     parser = argparse.ArgumentParser(
         description="AMEVA Host System CLI - 데이터 병합 & 정합성 검증 엔진",
@@ -151,14 +185,35 @@ def main():
     watch_parser.add_argument("--watch-dir", default=default_watch_dir, help="감시할 임시 DB 인입 디렉토리")
     watch_parser.add_argument("--incoming-dir", default=default_incoming_dir, help="수신된 물리 파일 저장 디렉토리")
 
+    # deploy 커맨드
+    deploy_parser = subparsers.add_parser("deploy", help="에지 디바이스에 페이로드를 압축 주입합니다 (Zero-Footprint).")
+    deploy_parser.add_argument("--mode", choices=["dev", "prd"], default="dev", help="배포 모드 선택")
+    deploy_parser.add_argument("--ssh-host", required=True, help="Edge 기기 IP")
+    deploy_parser.add_argument("--ssh-port", default=8022, type=int, help="Edge 기기 SSH Port")
+    deploy_parser.add_argument("--ssh-user", default="a35", help="Edge 기기 SSH 계정")
+    deploy_parser.add_argument("--ssh-key", default=os.path.expanduser("~/.ssh/id_rsa"), help="SSH Private Key 경로")
+
+    # shred 커맨드
+    shred_parser = subparsers.add_parser("shred", help="에지 디바이스의 임시 구동 폴더를 원격으로 파쇄/자폭 시킵니다.")
+    shred_parser.add_argument("--ssh-host", required=True, help="Edge 기기 IP")
+    shred_parser.add_argument("--ssh-port", default=8022, type=int, help="Edge 기기 SSH Port")
+    shred_parser.add_argument("--ssh-user", default="a35", help="Edge 기기 SSH 계정")
+    shred_parser.add_argument("--ssh-key", default=os.path.expanduser("~/.ssh/id_rsa"), help="SSH Private Key 경로")
+
     args = parser.parse_args()
 
     # 호스트 디렉토리 유무 확인 및 자동 설정
-    os.makedirs(os.path.dirname(args.master_db) or '.', exist_ok=True)
+    if args.command in ["sync", "watch"]:
+        os.makedirs(os.path.dirname(args.master_db) or '.', exist_ok=True)
+        
     if args.command == "sync":
         run_sync(args)
     elif args.command == "watch":
         run_watch(args)
+    elif args.command == "deploy":
+        run_deploy(args)
+    elif args.command == "shred":
+        run_shred(args)
 
 if __name__ == "__main__":
     main()

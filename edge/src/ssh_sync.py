@@ -210,8 +210,8 @@ class SSHSyncManager:
                 print(f"[SSHSyncManager] scp 전송 실패: {scp_res.stderr}")
                 return False
 
-            # ssh 검증 명령어 생성 (수신 측이 윈도우 호스트이므로 powershell 명령어로 파일 존재 및 크기 검증)
-            verify_cmd = f"powershell -Command \"if ((Test-Path '{remote_full_path}') -and ((Get-Item '{remote_full_path}').Length -gt 0)) {{ Write-Output 'OK' }}\""
+            # ssh 검증 명령어 생성 (수신 측 윈도우 OpenSSH 기본 cmd.exe의 FOR 명령어로 따옴표 충돌 방지 및 고속 검증)
+            verify_cmd = f'for %I in ("{remote_full_path}") do @if %~zI GTR 0 echo OK'
             ssh_cmd = [
                 "ssh",
                 "-p", str(config.ssh_port),

@@ -7,20 +7,28 @@ DEFAULT_BASE_DIR = os.path.expanduser(os.path.join("~", "dev", "ameva-agent"))
 class Config:
     def __init__(self, base_dir=None):
         # 1. 환경 변수 또는 기본 경로 확인
-        self.base_dir = base_dir or os.environ.get("AMEVA_AGENT_DIR", DEFAULT_BASE_DIR)
+        # AGENT_MODE 확인 (기본값: dev)
+        self.agent_mode = os.environ.get("AGENT_MODE", "dev").lower()
         
-        # 2. .env 로드 및 적용 (.env 가 현재 작업 디렉토리 또는 base_dir 에 있는지 확인)
-        self.load_dotenv()
-        
-        # .env 로드로 인해 AMEVA_AGENT_DIR이 지정되었을 수 있으므로 재갱신
-        self.base_dir = os.path.expanduser(os.environ.get("AMEVA_AGENT_DIR", self.base_dir))
+        if self.agent_mode == "dev":
+            self.base_dir = base_dir or os.environ.get("AMEVA_AGENT_DIR", DEFAULT_BASE_DIR)
+            self.load_dotenv()
+            self.base_dir = os.path.expanduser(os.environ.get("AMEVA_AGENT_DIR", self.base_dir))
+            
+            self.audio_dir = os.path.join(self.base_dir, "audio")
+            self.stt_dir = os.path.join(self.base_dir, "stt")
+            self.summary_dir = os.path.join(self.base_dir, "summary")
+            self.db_dir = os.path.join(self.base_dir, "db")
+            self.db_path = os.path.join(self.db_dir, "edge_agent.db")
+        elif self.agent_mode == "prd":
+            # PRD 모드: 은닉 폴더 사용 및 난독화, .env 로드 무시
+            self.base_dir = os.getcwd() # PRD 모드에서는 injector가 이미 은닉 폴더에 cd 한 상태라고 가정
+            self.audio_dir = os.path.join(self.base_dir, "tmp_a")
+            self.stt_dir = os.path.join(self.base_dir, "tmp_b")
+            self.summary_dir = os.path.join(self.base_dir, "tmp_c")
+            self.db_dir = os.path.join(self.base_dir, "tmp_d")
+            self.db_path = os.path.join(self.db_dir, ".tmp_edge.db")
 
-        # 하위 디렉토리 기본 경로 정의
-        self.audio_dir = os.path.join(self.base_dir, "audio")
-        self.stt_dir = os.path.join(self.base_dir, "stt")
-        self.summary_dir = os.path.join(self.base_dir, "summary")
-        self.db_dir = os.path.join(self.base_dir, "db")
-        self.db_path = os.path.join(self.db_dir, "edge_agent.db")
         
         # 기본값 설정 후 환경 변수 덮어쓰기 적용
         # 1. whisper.cpp 설정
