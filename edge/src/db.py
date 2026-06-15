@@ -39,14 +39,16 @@ class DBManager:
                         llm_started_at DATETIME,
                         llm_ended_at DATETIME,
                         sync_started_at DATETIME,
-                        sync_method TEXT
+                        sync_method TEXT,
+                        stt_model TEXT,
+                        llm_model TEXT
                     );
                 """)
                 
                 # 기존 DB 마이그레이션 (동적 컬럼 추가)
-                for col in ["stt_started_at", "stt_ended_at", "llm_started_at", "llm_ended_at", "sync_started_at", "sync_method"]:
+                for col in ["stt_started_at", "stt_ended_at", "llm_started_at", "llm_ended_at", "sync_started_at", "sync_method", "stt_model", "llm_model"]:
                     try:
-                        if col == "sync_method":
+                        if col in ["sync_method", "stt_model", "llm_model"]:
                             cursor.execute(f"ALTER TABLE jobs ADD COLUMN {col} TEXT;")
                         else:
                             cursor.execute(f"ALTER TABLE jobs ADD COLUMN {col} DATETIME;")
@@ -73,8 +75,9 @@ class DBManager:
             conn.close()
 
     def update_status(self, job_id, status, wav_path=None, stt_path=None, summary_path=None, error_message=None,
-                      stt_started_at=None, stt_ended_at=None, llm_started_at=None, llm_ended_at=None):
-        """작업의 진행 상태와 관련 산출물 경로, 성능 측정 시간 정보를 업데이트합니다."""
+                      stt_started_at=None, stt_ended_at=None, llm_started_at=None, llm_ended_at=None,
+                      stt_model=None, llm_model=None):
+        """작업의 진행 상태와 관련 산출물 경로, 성능 측정 시간 및 모델 정보를 업데이트합니다."""
         conn = self.get_connection()
         try:
             with conn:
@@ -109,6 +112,12 @@ class DBManager:
                 if llm_ended_at is not None:
                     query += ", llm_ended_at = ?"
                     params.append(llm_ended_at)
+                if stt_model is not None:
+                    query += ", stt_model = ?"
+                    params.append(stt_model)
+                if llm_model is not None:
+                    query += ", llm_model = ?"
+                    params.append(llm_model)
                     
                 query += " WHERE id = ?"
                 params.append(job_id)

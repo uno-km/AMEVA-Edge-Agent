@@ -126,12 +126,14 @@ class STTEngine:
                 
             # DB 상태 업데이트
             stt_ended_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            stt_model = os.path.basename(config.whisper_model)
             self.db.update_status(
                 job_id=job_id,
                 status='STT_COMPLETED',
                 wav_path=wav_path, # DB에는 외부 소음이 보존된 converted WAV 경로를 등록!
                 stt_path=stt_path,
-                stt_ended_at=stt_ended_at
+                stt_ended_at=stt_ended_at,
+                stt_model=stt_model
             )
             print(f"[STTEngine] [ID {job_id}] 성공적으로 변환 완료 -> {stt_path}")
             return True

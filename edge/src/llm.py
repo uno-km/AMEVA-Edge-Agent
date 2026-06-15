@@ -134,11 +134,13 @@ class LLMEngine:
                 
             # DB 상태 업데이트
             llm_ended_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            llm_model = config.ollama_model if use_ollama else (os.path.basename(config.llama_model) if config.llm_engine == "llama" else os.path.basename(config.bitnet_model))
             self.db.update_status(
                 job_id=job_id,
                 status='LLM_COMPLETED',
                 summary_path=summary_path,
-                llm_ended_at=llm_ended_at
+                llm_ended_at=llm_ended_at,
+                llm_model=llm_model
             )
             print(f"[LLMEngine] [ID {job_id}] 요약 성공 -> {summary_path}")
             return True

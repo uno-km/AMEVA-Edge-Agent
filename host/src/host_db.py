@@ -74,14 +74,19 @@ class HostDBManager:
                         stt_started_at DATETIME,
                         stt_ended_at DATETIME,
                         llm_started_at DATETIME,
-                        llm_ended_at DATETIME
+                        llm_ended_at DATETIME,
+                        stt_model TEXT,
+                        llm_model TEXT
                     );
                 """)
                 
                 # 기존 DB 마이그레이션 (동적 컬럼 추가)
-                for col in ["stt_started_at", "stt_ended_at", "llm_started_at", "llm_ended_at"]:
+                for col in ["stt_started_at", "stt_ended_at", "llm_started_at", "llm_ended_at", "stt_model", "llm_model"]:
                     try:
-                        cursor.execute(f"ALTER TABLE jobs ADD COLUMN {col} DATETIME;")
+                        if col in ["stt_model", "llm_model"]:
+                            cursor.execute(f"ALTER TABLE jobs ADD COLUMN {col} TEXT;")
+                        else:
+                            cursor.execute(f"ALTER TABLE jobs ADD COLUMN {col} DATETIME;")
                     except sqlite3.OperationalError:
                         pass # 이미 컬럼이 존재하는 경우 무시
             logger.info("Master DB 테이블 구조 검증 및 초기화 완료.")
@@ -116,9 +121,10 @@ class HostDBManager:
                     INSERT INTO jobs (
                         original_audio_path, wav_path, stt_path, summary_path,
                         status, sync_status, created_at, processed_at, sync_at, error_message,
-                        stt_started_at, stt_ended_at, llm_started_at, llm_ended_at
+                        stt_started_at, stt_ended_at, llm_started_at, llm_ended_at,
+                        stt_model, llm_model
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(original_audio_path) DO UPDATE SET
                         wav_path=excluded.wav_path,
                         stt_path=excluded.stt_path,
@@ -131,7 +137,9 @@ class HostDBManager:
                         stt_started_at=excluded.stt_started_at,
                         stt_ended_at=excluded.stt_ended_at,
                         llm_started_at=excluded.llm_started_at,
-                        llm_ended_at=excluded.llm_ended_at
+                        llm_ended_at=excluded.llm_ended_at,
+                        stt_model=excluded.stt_model,
+                        llm_model=excluded.llm_model
                 """, (
                     job.get('original_audio_path'),
                     job.get('wav_path'),
@@ -146,7 +154,9 @@ class HostDBManager:
                     job.get('stt_started_at'),
                     job.get('stt_ended_at'),
                     job.get('llm_started_at'),
-                    job.get('llm_ended_at')
+                    job.get('llm_ended_at'),
+                    job.get('stt_model'),
+                    job.get('llm_model')
                 ))
                 merged_count += 1
             
