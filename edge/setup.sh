@@ -302,10 +302,22 @@ if command -v ollama >/dev/null 2>&1; then
     ollama pull "$SELECTED_LLM"
 else
     echo -e "[설치] Ollama가 설치되어 있지 않습니다."
-    read -p "Ollama 설치 스크립트를 다운로드하여 설치하시겠습니까? (y/n): " install_ollama
+    read -p "Ollama를 설치하시겠습니까? (y/n): " install_ollama
     if [ "$install_ollama" = "y" ] || [ "$install_ollama" = "Y" ]; then
-        curl -fsSL https://ollama.com/install.sh | sh
+        if [ "$IS_TERMUX" = true ]; then
+            echo -e "[설치] Termux 패키지 관리자로 Ollama를 설치합니다..."
+            pkg install -y ollama
+        else
+            echo -e "[설치] 공식 Ollama 설치 스크립트를 실행합니다..."
+            curl -fsSL https://ollama.com/install.sh | sh
+        fi
         echo -e "[설치] Ollama 설치 완료."
+        
+        # 모델을 pull하기 위해 백그라운드로 임시 서버 실행
+        echo -e "[실행] Ollama 서버를 임시 가동합니다..."
+        ollama serve > /dev/null 2>&1 &
+        sleep 4
+        
         ollama pull qwen2.5:0.5b
     else
         echo -e "${YELLOW}[안내] Llama 1.5B/3B를 실행하기 위해 필요한 경우 Ollama를 수동 설치하십시오.${NC}"
