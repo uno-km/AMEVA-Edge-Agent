@@ -54,9 +54,11 @@ if %errorLevel% neq 0 (
     powershell -Command "Copy-Item -Path '$env:USERPROFILE\OpenSSH\OpenSSH-Win64' -Destination 'C:\OpenSSH' -Recurse -Force"
     cd /d "C:\OpenSSH"
     powershell -ExecutionPolicy Bypass -File .\install-sshd.ps1
+    powershell -Command "& 'C:\OpenSSH\ssh-keygen.exe' -A"
     cd /d "%~dp0"
 ) else (
     echo [SSH] OpenSSH Server is already installed.
+    powershell -Command "if (Test-Path 'C:\OpenSSH\ssh-keygen.exe') { & 'C:\OpenSSH\ssh-keygen.exe' -A }"
 )
 
 echo [SSH] Configuring sshd_config for key authentication bypass for administrators...
@@ -67,7 +69,8 @@ powershell -Command "Set-Service -Name sshd -StartupType 'Automatic' -ErrorActio
 powershell -Command "Start-Service sshd -ErrorAction SilentlyContinue"
 
 echo [SSH] Ensuring Firewall rule is configured...
-powershell -Command "if (!(Get-NetFirewallRule -Name 'OpenSSH-Server-In-TCP' -ErrorAction SilentlyContinue)) { New-NetFirewallRule -Name 'OpenSSH-Server-In-TCP' -DisplayName 'OpenSSH Server (sshd)' -Enabled True -Direction Inbound -Protocol TCP -LocalPort 22 -Action Allow }"
+powershell -Command "Remove-NetFirewallRule -Name 'OpenSSH-Server-In-TCP' -ErrorAction SilentlyContinue"
+powershell -Command "New-NetFirewallRule -Name 'OpenSSH-Server-In-TCP' -DisplayName 'OpenSSH Server (sshd)' -Enabled True -Direction Inbound -Protocol TCP -LocalPort 22 -Action Allow -Profile Any"
 
 echo ===================================================
 echo       AMEVA Host System - Setup Finished
