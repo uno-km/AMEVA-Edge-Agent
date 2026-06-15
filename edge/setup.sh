@@ -136,13 +136,75 @@ elif [ "$model_choice" = "3" ]; then
     SELECTED_MODEL="small"
 fi
 
-WHISPER_MODEL_FILE="${HOME}/dev/whisper.cpp/models/ggml-${SELECTED_MODEL}.bin"
+WHISPER_MODEL_FILE="${HOME}/dev/whisper.cpp/models/ggml-base.bin"
 
-if [ -f "$WHISPER_MAIN" ] && [ -f "$WHISPER_MODEL_FILE" ]; then
-    echo -e "[스캔] ${GREEN}whisper.cpp 빌드 및 ${SELECTED_MODEL} 모델 확인 완료.${NC}"
+echo -e "\n--- [STT 구성] whisper.cpp 및 모델 설치 ---"
+echo -e "사용 가능한 모델 체급:"
+echo -e "  1) tiny (약 75MB, 최고 속도, 정확도 보통)"
+echo -e "  2) base (약 142MB, 빠른 속도, 정확도 준수 - 추천)"
+echo -e "  3) small (약 466MB, 보통 속도, 정확도 높음)"
+read -p "사용할 모델 체급 번호를 선택하세요 (1-3, 기본값 2, 예: 1,3 또는 123): " model_choice
+
+# 입력 값 파싱 및 다중 선택 지원
+if [ -z "$model_choice" ]; then
+    model_choice="2"
+fi
+
+if [[ "$model_choice" == *"1-3"* ]]; then
+    model_choice="${model_choice/1-3/123}"
+fi
+if [[ "$model_choice" == *"2-3"* ]]; then
+    model_choice="${model_choice/2-3/23}"
+fi
+if [[ "$model_choice" == *"1-2"* ]]; then
+    model_choice="${model_choice/1-2/12}"
+fi
+
+WANT_TINY=false
+WANT_BASE=false
+WANT_SMALL=false
+
+if [[ "$model_choice" =~ "1" ]]; then WANT_TINY=true; fi
+if [[ "$model_choice" =~ "2" ]]; then WANT_BASE=true; fi
+if [[ "$model_choice" =~ "3" ]]; then WANT_SMALL=true; fi
+
+if [ "$WANT_TINY" = false ] && [ "$WANT_BASE" = false ] && [ "$WANT_SMALL" = false ]; then
+    WANT_BASE=true
+fi
+
+# .env에 기본 등록할 대표 모델명 지정
+DEFAULT_MODEL_NAME="base"
+if [ "$WANT_TINY" = true ]; then
+    DEFAULT_MODEL_NAME="tiny"
+elif [ "$WANT_BASE" = true ]; then
+    DEFAULT_MODEL_NAME="base"
+elif [ "$WANT_SMALL" = true ]; then
+    DEFAULT_MODEL_NAME="small"
+fi
+
+# 빌드 필요성 확인
+NEED_WHISPER_BUILD=false
+if [ ! -f "$WHISPER_MAIN" ]; then
+    NEED_WHISPER_BUILD=true
+fi
+
+# 선택된 모델 중 누락된 파일 검출
+MISSING_MODELS=()
+if [ "$WANT_TINY" = true ] && [ ! -f "${HOME}/dev/whisper.cpp/models/ggml-tiny.bin" ]; then
+    MISSING_MODELS+=("tiny")
+fi
+if [ "$WANT_BASE" = true ] && [ ! -f "${HOME}/dev/whisper.cpp/models/ggml-base.bin" ]; then
+    MISSING_MODELS+=("base")
+fi
+if [ "$WANT_SMALL" = true ] && [ ! -f "${HOME}/dev/whisper.cpp/models/ggml-small.bin" ]; then
+    MISSING_MODELS+=("small")
+fi
+
+if [ "$NEED_WHISPER_BUILD" = false ] && [ ${#MISSING_MODELS[@]} -eq 0 ]; then
+    echo -e "[스캔] ${GREEN}whisper.cpp 빌드 및 선택한 모델 파일들이 모두 준비되어 있습니다.${NC}"
 else
-    echo -e "[설치] whisper.cpp 혹은 ${SELECTED_MODEL} 모델이 발견되지 않았습니다."
-    read -p "whisper.cpp 및 ${SELECTED_MODEL} 모델을 다운로드하고 빌드하시겠습니까? (y/n): " build_whisper
+    echo -e "[설치] whisper.cpp 빌드 또는 선택한 모델 파일이 누락되었습니다."
+    read -p "whisper.cpp 및 누락된 모델(${MISSING_MODELS[*]})을 다운로드하고 빌드하시겠습니까? (y/n): " build_whisper
     if [ "$build_whisper" = "y" ] || [ "$build_whisper" = "Y" ]; then
         echo -e "[설치] whisper.cpp 리포지토리를 클론합니다..."
         mkdir -p "${HOME}/dev"
@@ -150,21 +212,26 @@ else
             git clone https://github.com/ggerganov/whisper.cpp.git "${HOME}/dev/whisper.cpp"
         fi
         cd "${HOME}/dev/whisper.cpp"
-        echo -e "[빌드] whisper.cpp 컴파일 진행 중..."
         
-        if command -v cmake >/dev/null 2>&1; then
-            cmake -B build
-            cmake --build build --config Release -j$(nproc)
-            WHISPER_MAIN="${HOME}/dev/whisper.cpp/build/bin/whisper-cli"
-        else
-            make -j$(nproc)
-            WHISPER_MAIN="${HOME}/dev/whisper.cpp/main"
+        if [ "$NEED_WHISPER_BUILD" = true ]; then
+            echo -e "[빌드] whisper.cpp 컴파일 진행 중..."
+            if command -v cmake >/dev/null 2>&1; then
+                cmake -B build
+                cmake --build build --config Release -j$(nproc)
+                WHISPER_MAIN="${HOME}/dev/whisper.cpp/build/bin/whisper-cli"
+            else
+                make -j$(nproc)
+                WHISPER_MAIN="${HOME}/dev/whisper.cpp/main"
+            fi
         fi
         
-        echo -e "[모델] ggml-${SELECTED_MODEL}.bin 모델 다운로드 중..."
-        ./models/download-ggml-model.sh "$SELECTED_MODEL"
+        # 누락된 모델들만 순차 다운로드
+        for model in "${MISSING_MODELS[@]}"; do
+            echo -e "[모델] ggml-${model}.bin 모델 다운로드 중..."
+            ./models/download-ggml-model.sh "$model"
+        done
         cd -
-        echo -e "[완료] whisper.cpp 빌드가 성공적으로 완료되었습니다."
+        echo -e "[완료] whisper.cpp 빌드 및 모델 설치 완료."
     else
         echo -e "${YELLOW}[안내] whisper.cpp 바이너리 및 모델을 수동으로 구성해 주십시오.${NC}"
     fi
@@ -175,7 +242,7 @@ if [ -f "${AGENT_DIR}/.env" ]; then
     if [ -f "$WHISPER_MAIN" ]; then
         sed -i "s|WHISPER_BIN=.*|WHISPER_BIN=${WHISPER_MAIN}|g" "${AGENT_DIR}/.env"
     fi
-    sed -i "s|WHISPER_MODEL=.*|WHISPER_MODEL=${HOME}/dev/whisper.cpp/models/ggml-${SELECTED_MODEL}.bin|g" "${AGENT_DIR}/.env"
+    sed -i "s|WHISPER_MODEL=.*|WHISPER_MODEL=${HOME}/dev/whisper.cpp/models/ggml-${DEFAULT_MODEL_NAME}.bin|g" "${AGENT_DIR}/.env"
 fi
 
 # 7. bitnet.cpp 빌드 상태 스캔
