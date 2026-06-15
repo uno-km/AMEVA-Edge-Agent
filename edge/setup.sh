@@ -285,6 +285,7 @@ fi
 
 # 8. Ollama 워크어라운드 및 모델 풀 자동화
 echo -e "\n--- [LLM 구성] Ollama 설치 및 모델 준비 ---"
+OLLAMA_SELECTED_MODEL=""
 if command -v ollama >/dev/null 2>&1; then
     echo -e "[스캔] ${GREEN}Ollama가 이미 시스템에 설치되어 있습니다.${NC}"
     
@@ -297,6 +298,7 @@ if command -v ollama >/dev/null 2>&1; then
     if [ "$llm_choice" = "2" ]; then
         SELECTED_LLM="llama3.2:3b"
     fi
+    OLLAMA_SELECTED_MODEL="$SELECTED_LLM"
     
     echo -e "[모델] ${SELECTED_LLM} 모델을 원격 저장소에서 풀(pull)합니다..."
     ollama pull "$SELECTED_LLM"
@@ -312,6 +314,7 @@ else
             curl -fsSL https://ollama.com/install.sh | sh
         fi
         echo -e "[설치] Ollama 설치 완료."
+        OLLAMA_SELECTED_MODEL="qwen2.5:0.5b"
         
         # 모델을 pull하기 위해 백그라운드로 임시 서버 실행
         echo -e "[실행] Ollama 서버를 임시 가동합니다..."
@@ -322,6 +325,12 @@ else
     else
         echo -e "${YELLOW}[안내] Llama 1.5B/3B를 실행하기 위해 필요한 경우 Ollama를 수동 설치하십시오.${NC}"
     fi
+fi
+
+# .env에 Ollama 설정 자동 업데이트
+if [ -f "${AGENT_DIR}/.env" ] && [ -n "$OLLAMA_SELECTED_MODEL" ]; then
+    sed -i "s|OLLAMA_MODEL=.*|OLLAMA_MODEL=${OLLAMA_SELECTED_MODEL}|g" "${AGENT_DIR}/.env"
+    sed -i "s|LLM_ENGINE=.*|LLM_ENGINE=ollama|g" "${AGENT_DIR}/.env"
 fi
 
 # 9. SSH Key 자동 생성 및 안내
