@@ -26,19 +26,23 @@ if not exist "data\processed" mkdir "data\processed"
 if not exist "src" mkdir "src"
 
 rem 2. Configure Python Virtual Environment (venv)
-if not exist "venv" (
+if not exist "%~dp0venv" (
     echo [Python] Creating virtual environment venv
-    python -m venv venv
+    python -m venv "%~dp0venv"
 )
 
 echo [Python] Installing packages
-call venv\Scripts\activate.bat
+call "%~dp0venv\Scripts\activate.bat"
 python -m pip install --upgrade pip
-pip install -r requirements.txt
+if exist "%~dp0requirements.txt" (
+    pip install -r "%~dp0requirements.txt"
+) else (
+    echo [Warning] requirements.txt not found at "%~dp0requirements.txt"
+)
 
 rem 3. Initialize Master Database
 echo [Database] Initializing master database
-python -c "import sqlite3; conn=sqlite3.connect('data/all_agent_master.db'); cursor=conn.cursor(); cursor.execute('CREATE TABLE IF NOT EXISTS jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, original_audio_path TEXT UNIQUE, wav_path TEXT, stt_path TEXT, summary_path TEXT, status TEXT, sync_status TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, processed_at DATETIME, sync_at DATETIME, error_message TEXT, stt_started_at DATETIME, stt_ended_at DATETIME, llm_started_at DATETIME, llm_ended_at DATETIME);'); conn.commit(); conn.close(); print('[Database] all_agent_master.db initialization complete.')"
+python -c "import sqlite3; conn=sqlite3.connect('%~dp0data/all_agent_master.db'); cursor=conn.cursor(); cursor.execute('CREATE TABLE IF NOT EXISTS jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, original_audio_path TEXT UNIQUE, wav_path TEXT, stt_path TEXT, summary_path TEXT, status TEXT, sync_status TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, processed_at DATETIME, sync_at DATETIME, error_message TEXT, stt_started_at DATETIME, stt_ended_at DATETIME, llm_started_at DATETIME, llm_ended_at DATETIME);'); conn.commit(); conn.close(); print('[Database] all_agent_master.db initialization complete.')"
 
 rem 4. Install & Configure OpenSSH Server
 echo [SSH] Checking OpenSSH Server installation...
@@ -59,7 +63,8 @@ echo [SSH] Configuring sshd_config for key authentication bypass for administrat
 powershell -Command "if (Test-Path 'C:\ProgramData\ssh\sshd_config') { (Get-Content -Path 'C:\ProgramData\ssh\sshd_config') -replace 'Match Group administrators', '#Match Group administrators' -replace 'AuthorizedKeysFile __PROGRAMDATA__/ssh/administrators_authorized_keys', '#       AuthorizedKeysFile __PROGRAMDATA__/ssh/administrators_authorized_keys' | Set-Content -Path 'C:\ProgramData\ssh\sshd_config' } elseif (Test-Path 'C:\OpenSSH\sshd_config_default') { (Get-Content -Path 'C:\OpenSSH\sshd_config_default') -replace 'Match Group administrators', '#Match Group administrators' -replace 'AuthorizedKeysFile __PROGRAMDATA__/ssh/administrators_authorized_keys', '#       AuthorizedKeysFile __PROGRAMDATA__/ssh/administrators_authorized_keys' | Set-Content -Path 'C:\OpenSSH\sshd_config_default' }"
 
 echo [SSH] Starting SSH service and setting startup to Automatic...
-powershell -Command "Start-Service sshd -ErrorAction SilentlyContinue; if ($?) { Set-Service -Name sshd -StartupType 'Automatic' } else { sc.exe config sshd start= auto; net start sshd }"
+powershell -Command "Set-Service -Name sshd -StartupType 'Automatic' -ErrorAction SilentlyContinue"
+powershell -Command "Start-Service sshd -ErrorAction SilentlyContinue"
 
 echo [SSH] Ensuring Firewall rule is configured...
 powershell -Command "if (!(Get-NetFirewallRule -Name 'OpenSSH-Server-In-TCP' -ErrorAction SilentlyContinue)) { New-NetFirewallRule -Name 'OpenSSH-Server-In-TCP' -DisplayName 'OpenSSH Server (sshd)' -Enabled True -Direction Inbound -Protocol TCP -LocalPort 22 -Action Allow }"
@@ -67,4 +72,18 @@ powershell -Command "if (!(Get-NetFirewallRule -Name 'OpenSSH-Server-In-TCP' -Er
 echo ===================================================
 echo       AMEVA Host System - Setup Finished
 echo ===================================================
+echo.
+echo ===================================================
+echo   [Guide] Edge Device (Phone) Connection Settings
+echo ===================================================
+echo   Current Host Local IP Addresses:
+powershell -Command "Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notlike '127*' -and $_.InterfaceAlias -notlike '*Loopback*' } | ForEach-Object { Write-Host '   >>' $_.IPAddress }"
+echo.
+echo   Please configure the .env file in your Edge Device (Termux) as below:
+echo   -------------------------------------------------
+echo   HOST_USER=atsadmin
+echo   HOST_PORT=22
+echo   HOST_FOLDER=C:/ameva/AMEVA-Edge-Agent/host
+echo   -------------------------------------------------
+echo.
 pause
