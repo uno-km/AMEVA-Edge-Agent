@@ -86,9 +86,15 @@ if [ ! -f "${AGENT_DIR}/.env" ]; then
     if [ -f ".env" ]; then
         echo -e "[설정] .env 파일을 고정 구동 경로로 복사합니다..."
         cp .env "${AGENT_DIR}/.env"
+    elif [ -f "../.env" ]; then
+        echo -e "[설정] 부모 디렉토리의 .env 파일을 고정 구동 경로로 복사합니다..."
+        cp ../.env "${AGENT_DIR}/.env"
     elif [ -f ".env.example" ]; then
         echo -e "[설정] .env 파일이 없으므로 .env.example을 기반으로 설정 파일을 생성합니다..."
         cp .env.example "${AGENT_DIR}/.env"
+    elif [ -f "../.env.example" ]; then
+        echo -e "[설정] .env 파일이 없으므로 부모 디렉토리의 .env.example을 기반으로 설정 파일을 생성합니다..."
+        cp ../.env.example "${AGENT_DIR}/.env"
     fi
 else
     echo -e "[설정] 고정 구동 경로 내 .env 파일이 이미 존재하여 덮어쓰지 않고 보존합니다."
