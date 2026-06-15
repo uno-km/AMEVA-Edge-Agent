@@ -88,10 +88,10 @@ class SSHSyncManager:
         sync_started_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         sync_method = 'MOCK' if (config.ssh_host == "your.server.ip" or config.ssh_host == "mock") else 'SSH_SCP'
 
-        # 1. 파일 업로드 실행
+        # 1. 파일 업로드 실행 (호스트의 데이터 저장 디렉토리인 data/incoming/files 로 분기)
         upload_success = True
         for filepath in files_to_send:
-            if not self._upload_file(filepath):
+            if not self._upload_file(filepath, remote_subpath="data/incoming/files"):
                 upload_success = False
                 break
 
@@ -150,18 +150,23 @@ class SSHSyncManager:
 
         print(f"[SSHSyncManager] 23:00 배치: DB 마이그레이션 전송 시도 시작 -> {db_file}")
 
-        # SQLite DB 내부 데이터를 안전하게 선제 삭제(DELETE + VACUUM)
-        # 전송할 데이터가 훼손되지 않도록 임시 파일로 복사본을 만들어 전송하고, 검증 성공 시 원본 DB 및 복사본 DB를 모두 소거합니다.
+        # SQLite DB 내부 데이터를 안전하게 전송하기 위해 sqlite3 공식 backup API 사용 (WAL 모드 데이터 유실 방지)
         temp_db_copy = db_file + ".tmp_sync"
         try:
-            shutil.copy2(db_file, temp_db_copy)
+            import sqlite3
+            src_conn = sqlite3.connect(db_file)
+            dst_conn = sqlite3.connect(temp_db_copy)
+            with dst_conn:
+                src_conn.backup(dst_conn)
+            src_conn.close()
+            dst_conn.close()
+            print("[SSHSyncManager] DB 정합성 백업 성공 (WAL 플러싱 완료)")
         except Exception as e:
-            print(f"[SSHSyncManager] DB 임시 복사본 생성 실패: {e}")
+            print(f"[SSHSyncManager] DB 백업본 생성 실패: {e}")
             return False
 
-        # 임시 복사 DB를 원격지에 전송
-        dest_filename = f"edge_agent_migrated_{os.uname().nodename if hasattr(os, 'uname') else 'device'}_{os.getpid()}.db"
-        upload_success = self._upload_file(temp_db_copy, remote_name=dest_filename)
+        # 임시 복사 DB를 원격지에 전송 (호스트 Watchdog 규격인 data/incoming/db/edge_agent_tmp.db 에 정확히 도달하도록 경로/파일명 매핑)
+        upload_success = self._upload_file(temp_db_copy, remote_name="edge_agent_tmp.db", remote_subpath="data/incoming/db")
 
         if upload_success:
             print("[SSHSyncManager] DB 전송 성공 검증 완료. 로컬 DB 완전 소거(Forensics Clear)를 진행합니다.")
@@ -177,10 +182,10 @@ class SSHSyncManager:
                 shred_file(temp_db_copy, passes=config.shred_passes)
             return False
 
-    def _upload_file(self, local_path, remote_name=None):
+    def _upload_file(self, local_path, remote_name=None, remote_subpath=""):
         """scp 명령어를 사용하여 원격 서버로 파일을 전송하고, ssh 명령어로 존재 및 크기 검증을 수행합니다."""
         filename = remote_name or os.path.basename(local_path)
-        remote_full_path = os.path.join(config.ssh_remote_path, filename).replace("\\", "/")
+        remote_full_path = os.path.join(config.ssh_remote_path, remote_subpath, filename).replace("\\", "/")
 
         # mock 모드 처리 (설정이 비어있거나 local mock 환경인 경우)
         if config.ssh_host == "your.server.ip" or config.ssh_host == "mock":
@@ -205,9 +210,8 @@ class SSHSyncManager:
                 print(f"[SSHSyncManager] scp 전송 실패: {scp_res.stderr}")
                 return False
 
-            # ssh 검증 명령어 생성 (서버 상에 파일이 있고 크기가 0 초과인지 확인)
-            # ssh -p [port] -i [key] [user]@[host] "[cmd]"
-            verify_cmd = f"test -f '{remote_full_path}' && test -s '{remote_full_path}' && echo 'OK'"
+            # ssh 검증 명령어 생성 (수신 측이 윈도우 호스트이므로 powershell 명령어로 파일 존재 및 크기 검증)
+            verify_cmd = f"powershell -Command \"if ((Test-Path '{remote_full_path}') -and ((Get-Item '{remote_full_path}').Length -gt 0)) {{ Write-Output 'OK' }}\""
             ssh_cmd = [
                 "ssh",
                 "-p", str(config.ssh_port),
@@ -221,7 +225,7 @@ class SSHSyncManager:
             if ssh_res.returncode == 0 and "OK" in ssh_res.stdout:
                 return True
             else:
-                print(f"[SSHSyncManager] 원격 전송 검증 실패 (파일 크기 비매칭 혹은 파일 부재): {ssh_res.stderr}")
+                print(f"[SSHSyncManager] 원격 전송 검증 실패 (파일 크기 비매칭 혹은 파일 부재): {ssh_res.stderr or ssh_res.stdout}")
                 return False
 
         except subprocess.TimeoutExpired:
