@@ -300,37 +300,38 @@ if command -v ollama >/dev/null 2>&1; then
     
     echo -e "설치 가능한 권장 모델 체급:"
     echo -e "  1) qwen2.5:0.5b (약 350MB, 초경량, 모바일 강추, 튕김 없음)"
-    echo -e "  2) llama3.2:3b  (약 2.0GB, 높은 퀄리티, 충분한 메모리 필요)"
+    echo -e "  2) qwen2.5:1.5b (약 900MB, 밸런스형, 추천)"
+    echo -e "  3) llama3.2:3b  (약 2.0GB, 높은 퀄리티, 충분한 메모리 필요)"
     
     if [ "$AUTO_INSTALL" = "true" ] || [ "$NON_INTERACTIVE" = "true" ]; then
-        echo -e "[자동] 무인 설치 모드가 활성화되었습니다. 기본 모델 'qwen2.5:0.5b'를 선택합니다."
-        llm_choice="1"
+        echo -e "[자동] 무인 설치 모드가 활성화되었습니다. 기본 모델 'qwen2.5:1.5b'를 선택합니다."
+        llm_choice="2"
     else
-        read -p "풀(Pull)할 LLM 모델 번호를 선택하세요 (1-2, 기본값 1, 예: 1,2 또는 12): " llm_choice
+        read -p "풀(Pull)할 LLM 모델 번호를 선택하세요 (1-3, 기본값 1, 예: 1, 2, 3): " llm_choice
     fi
     
     if [ -z "$llm_choice" ]; then
         llm_choice="1"
     fi
     
-    if [[ "$llm_choice" == *"1-2"* ]]; then
-        llm_choice="${llm_choice/1-2/12}"
-    fi
-    
-    WANT_QWEN=false
+    WANT_QWEN_05=false
+    WANT_QWEN_15=false
     WANT_LLAMA=false
     
-    if [[ "$llm_choice" =~ "1" ]]; then WANT_QWEN=true; fi
-    if [[ "$llm_choice" =~ "2" ]]; then WANT_LLAMA=true; fi
+    if [[ "$llm_choice" =~ "1" ]]; then WANT_QWEN_05=true; fi
+    if [[ "$llm_choice" =~ "2" ]]; then WANT_QWEN_15=true; fi
+    if [[ "$llm_choice" =~ "3" ]]; then WANT_LLAMA=true; fi
     
-    if [ "$WANT_QWEN" = false ] && [ "$WANT_LLAMA" = false ]; then
-        WANT_QWEN=true
+    if [ "$WANT_QWEN_05" = false ] && [ "$WANT_QWEN_15" = false ] && [ "$WANT_LLAMA" = false ]; then
+        WANT_QWEN_05=true
     fi
     
-    # .env에 기본 등록할 대표 모델명 지정 (Qwen 우선)
+    # .env에 기본 등록할 대표 모델명 지정
     OLLAMA_SELECTED_MODEL="qwen2.5:0.5b"
-    if [ "$WANT_QWEN" = true ]; then
+    if [ "$WANT_QWEN_05" = true ]; then
         OLLAMA_SELECTED_MODEL="qwen2.5:0.5b"
+    elif [ "$WANT_QWEN_15" = true ]; then
+        OLLAMA_SELECTED_MODEL="qwen2.5:1.5b"
     elif [ "$WANT_LLAMA" = true ]; then
         OLLAMA_SELECTED_MODEL="llama3.2:3b"
     fi
@@ -342,9 +343,13 @@ if command -v ollama >/dev/null 2>&1; then
         sleep 5
     fi
     
-    if [ "$WANT_QWEN" = true ]; then
+    if [ "$WANT_QWEN_05" = true ]; then
         echo -e "[모델] qwen2.5:0.5b 모델을 원격 저장소에서 풀(pull)합니다..."
         ollama pull "qwen2.5:0.5b"
+    fi
+    if [ "$WANT_QWEN_15" = true ]; then
+        echo -e "[모델] qwen2.5:1.5b 모델을 원격 저장소에서 풀(pull)합니다..."
+        ollama pull "qwen2.5:1.5b"
     fi
     if [ "$WANT_LLAMA" = true ]; then
         echo -e "[모델] llama3.2:3b 모델을 원격 저장소에서 풀(pull)합니다..."
@@ -385,6 +390,8 @@ if [ -f "${AGENT_DIR}/.env" ] && [ -n "$OLLAMA_SELECTED_MODEL" ]; then
     sed -i "s|OLLAMA_MODEL=.*|OLLAMA_MODEL=${OLLAMA_SELECTED_MODEL}|g" "${AGENT_DIR}/.env"
     sed -i "s|LLM_ENGINE=.*|LLM_ENGINE=ollama|g" "${AGENT_DIR}/.env"
 fi
+
+
 
 # 9. SSH Key 자동 생성 및 안내
 echo -e "\n--- [보안 전송] SSH Key 검증 및 생성 ---"
