@@ -76,14 +76,8 @@ echo.
 echo ===================================================
 echo   [Guide] Edge Device (Phone) Connection Settings
 echo ===================================================
-echo   Current Host Local IP Addresses:
-powershell -Command "Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notlike '127*' -and $_.InterfaceAlias -notlike '*Loopback*' } | ForEach-Object { Write-Host '   >>' $_.IPAddress }"
+echo   Copy and run the following command directly on your Edge Device (Termux):
 echo.
-echo   Please configure the .env file in your Edge Device (Termux) as below:
-echo   -------------------------------------------------
-echo   HOST_USER=atsadmin
-echo   HOST_PORT=22
-echo   HOST_FOLDER=C:/ameva/AMEVA-Edge-Agent/host
-echo   -------------------------------------------------
+powershell -Command "$ip = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notlike '127*' -and $_.IPAddress -notlike '169.254*' -and $_.InterfaceAlias -notlike '*Loopback*' } | Select-Object -First 1).IPAddress; if (-not $ip) { $ip = 'YOUR_HOST_IP' }; Write-Host '-------------------------------------------------'; Write-Host 'cd ~/dev/ameva-agent'; Write-Host ''; Write-Host 'for key in HOST_IP HOST_USER HOST_PORT HOST_FOLDER; do'; Write-Host '    sed -i \"/^${key}=/d\" .env 2>/dev/null'; Write-Host 'done'; Write-Host ''; Write-Host \"echo 'HOST_IP='\"$ip\"'' >> .env\"; Write-Host \"echo 'HOST_USER=atsadmin' >> .env\"; Write-Host \"echo 'HOST_PORT=22' >> .env\"; Write-Host \"echo 'HOST_FOLDER=C:/ameva/AMEVA-Edge-Agent/host' >> .env\"; Write-Host ''; Write-Host \"grep -E 'HOST_IP|HOST_USER|HOST_PORT|HOST_FOLDER' .env\"; Write-Host '-------------------------------------------------'"
 echo.
 pause
