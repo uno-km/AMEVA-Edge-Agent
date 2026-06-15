@@ -27,6 +27,9 @@ class AudioScanner:
             for root, _, files in os.walk(directory):
                 for file in files:
                     if file.lower().endswith(SUPPORTED_EXTENSIONS):
+                        # 임시 생성된 파일(converted_, cleaned_)은 스캔 대상에서 제외
+                        if file.lower().startswith(("converted_", "cleaned_")):
+                            continue
                         full_path = os.path.abspath(os.path.join(root, file))
                         total_found += 1
                         
