@@ -7,6 +7,7 @@ import urllib.request
 import urllib.error
 import sys
 import shutil
+from datetime import datetime
 from src.config import config
 from src.db import DBManager
 
@@ -81,6 +82,9 @@ class LLMEngine:
 
         print(f"[LLMEngine] 작업 시작 [ID {job_id}]: {stt_path}")
         
+        llm_started_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.db.update_status(job_id, status='PROCESSING_LLM', llm_started_at=llm_started_at)
+        
         # 1. 텍스트 내용 읽기
         try:
             with open(stt_path, "r", encoding="utf-8") as f:
@@ -88,13 +92,13 @@ class LLMEngine:
         except Exception as e:
             error_msg = f"STT 파일 읽기 오류: {e}"
             print(f"[LLMEngine] {error_msg}")
-            # self.db.update_status(job_id, 'FAILED', error_message=error_msg)
+            self.db.update_status(job_id, 'STT_COMPLETED', error_message=error_msg)
             return False
 
         if not transcription.strip():
             error_msg = "STT 텍스트 내용이 비어있어 요약할 수 없습니다."
             print(f"[LLMEngine] {error_msg}")
-            # self.db.update_status(job_id, 'FAILED', error_message=error_msg)
+            self.db.update_status(job_id, 'STT_COMPLETED', error_message=error_msg)
             return False
 
         # 2. 프롬프트 생성
@@ -129,10 +133,12 @@ class LLMEngine:
                 f.write(summary_content)
                 
             # DB 상태 업데이트
+            llm_ended_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             self.db.update_status(
                 job_id=job_id,
                 status='LLM_COMPLETED',
-                summary_path=summary_path
+                summary_path=summary_path,
+                llm_ended_at=llm_ended_at
             )
             print(f"[LLMEngine] [ID {job_id}] 요약 성공 -> {summary_path}")
             return True
@@ -140,7 +146,7 @@ class LLMEngine:
         except Exception as e:
             error_msg = f"LLM 추론 중 오류 발생: {e}"
             print(f"[LLMEngine] [ID {job_id}] {error_msg}")
-            # self.db.update_status(job_id, 'FAILED', error_message=error_msg)
+            self.db.update_status(job_id, 'STT_COMPLETED', error_message=error_msg)
             return False
 
 

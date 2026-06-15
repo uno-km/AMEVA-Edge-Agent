@@ -2,6 +2,7 @@ import os
 import subprocess
 import shutil
 import json
+from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from src.config import config
 from src.db import DBManager
@@ -50,6 +51,9 @@ class STTEngine:
             return False
 
         print(f"[STTEngine] 작업 시작 [ID {job_id}]: {original_path}")
+        
+        stt_started_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.db.update_status(job_id, status='PROCESSING_STT', stt_started_at=stt_started_at)
         
         # 1. 오디오 포맷 변환 및 경로 정의
         filename = os.path.basename(original_path)
@@ -121,11 +125,13 @@ class STTEngine:
                 f.write("\n".join(formatted_lines))
                 
             # DB 상태 업데이트
+            stt_ended_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             self.db.update_status(
                 job_id=job_id,
                 status='STT_COMPLETED',
                 wav_path=wav_path, # DB에는 외부 소음이 보존된 converted WAV 경로를 등록!
-                stt_path=stt_path
+                stt_path=stt_path,
+                stt_ended_at=stt_ended_at
             )
             print(f"[STTEngine] [ID {job_id}] 성공적으로 변환 완료 -> {stt_path}")
             return True

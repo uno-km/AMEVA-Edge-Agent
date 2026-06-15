@@ -33,9 +33,20 @@ class DBManager:
                         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                         processed_at DATETIME,
                         sync_at DATETIME,
-                        error_message TEXT
+                        error_message TEXT,
+                        stt_started_at DATETIME,
+                        stt_ended_at DATETIME,
+                        llm_started_at DATETIME,
+                        llm_ended_at DATETIME
                     );
                 """)
+                
+                # 기존 DB 마이그레이션 (동적 컬럼 추가)
+                for col in ["stt_started_at", "stt_ended_at", "llm_started_at", "llm_ended_at"]:
+                    try:
+                        cursor.execute(f"ALTER TABLE jobs ADD COLUMN {col} DATETIME;")
+                    except sqlite3.OperationalError:
+                        pass # 이미 컬럼이 존재하는 경우 무시
         finally:
             conn.close()
 
@@ -56,8 +67,9 @@ class DBManager:
         finally:
             conn.close()
 
-    def update_status(self, job_id, status, wav_path=None, stt_path=None, summary_path=None, error_message=None):
-        """작업의 진행 상태와 관련 산출물 경로를 업데이트합니다."""
+    def update_status(self, job_id, status, wav_path=None, stt_path=None, summary_path=None, error_message=None,
+                      stt_started_at=None, stt_ended_at=None, llm_started_at=None, llm_ended_at=None):
+        """작업의 진행 상태와 관련 산출물 경로, 성능 측정 시간 정보를 업데이트합니다."""
         conn = self.get_connection()
         try:
             with conn:
@@ -79,6 +91,19 @@ class DBManager:
                     params.append(error_message)
                 else:
                     query += ", error_message = NULL"
+                    
+                if stt_started_at is not None:
+                    query += ", stt_started_at = ?"
+                    params.append(stt_started_at)
+                if stt_ended_at is not None:
+                    query += ", stt_ended_at = ?"
+                    params.append(stt_ended_at)
+                if llm_started_at is not None:
+                    query += ", llm_started_at = ?"
+                    params.append(llm_started_at)
+                if llm_ended_at is not None:
+                    query += ", llm_ended_at = ?"
+                    params.append(llm_ended_at)
                     
                 query += " WHERE id = ?"
                 params.append(job_id)
