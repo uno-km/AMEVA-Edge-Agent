@@ -70,9 +70,20 @@ class HostDBManager:
                         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                         processed_at DATETIME,
                         sync_at DATETIME,
-                        error_message TEXT
+                        error_message TEXT,
+                        stt_started_at DATETIME,
+                        stt_ended_at DATETIME,
+                        llm_started_at DATETIME,
+                        llm_ended_at DATETIME
                     );
                 """)
+                
+                # 기존 DB 마이그레이션 (동적 컬럼 추가)
+                for col in ["stt_started_at", "stt_ended_at", "llm_started_at", "llm_ended_at"]:
+                    try:
+                        cursor.execute(f"ALTER TABLE jobs ADD COLUMN {col} DATETIME;")
+                    except sqlite3.OperationalError:
+                        pass # 이미 컬럼이 존재하는 경우 무시
             logger.info("Master DB 테이블 구조 검증 및 초기화 완료.")
         except sqlite3.Error as e:
             logger.error(f"Master DB 초기화 실패: {e}", exc_info=True)
@@ -104,9 +115,10 @@ class HostDBManager:
                 cursor_master.execute("""
                     INSERT INTO jobs (
                         original_audio_path, wav_path, stt_path, summary_path,
-                        status, sync_status, created_at, processed_at, sync_at, error_message
+                        status, sync_status, created_at, processed_at, sync_at, error_message,
+                        stt_started_at, stt_ended_at, llm_started_at, llm_ended_at
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(original_audio_path) DO UPDATE SET
                         wav_path=excluded.wav_path,
                         stt_path=excluded.stt_path,
@@ -115,7 +127,11 @@ class HostDBManager:
                         sync_status=excluded.sync_status,
                         processed_at=excluded.processed_at,
                         sync_at=excluded.sync_at,
-                        error_message=excluded.error_message
+                        error_message=excluded.error_message,
+                        stt_started_at=excluded.stt_started_at,
+                        stt_ended_at=excluded.stt_ended_at,
+                        llm_started_at=excluded.llm_started_at,
+                        llm_ended_at=excluded.llm_ended_at
                 """, (
                     job.get('original_audio_path'),
                     job.get('wav_path'),
@@ -126,7 +142,11 @@ class HostDBManager:
                     job.get('created_at'),
                     job.get('processed_at'),
                     job.get('sync_at'),
-                    job.get('error_message')
+                    job.get('error_message'),
+                    job.get('stt_started_at'),
+                    job.get('stt_ended_at'),
+                    job.get('llm_started_at'),
+                    job.get('llm_ended_at')
                 ))
                 merged_count += 1
             

@@ -51,7 +51,11 @@ cursor.execute('''
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         processed_at DATETIME,
         sync_at DATETIME,
-        error_message TEXT
+        error_message TEXT,
+        stt_started_at DATETIME,
+        stt_ended_at DATETIME,
+        llm_started_at DATETIME,
+        llm_ended_at DATETIME
     );
 ''')
 conn.commit()
