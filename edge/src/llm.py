@@ -76,7 +76,7 @@ class LLMEngine:
         if not stt_path or not os.path.exists(stt_path):
             error_msg = f"STT 결과 파일이 유실되었습니다: {stt_path}"
             print(f"[LLMEngine] {error_msg}")
-            self.db.update_status(job_id, 'FAILED', error_message=error_msg)
+            # self.db.update_status(job_id, 'FAILED', error_message=error_msg)
             return False
 
         print(f"[LLMEngine] 작업 시작 [ID {job_id}]: {stt_path}")
@@ -88,13 +88,13 @@ class LLMEngine:
         except Exception as e:
             error_msg = f"STT 파일 읽기 오류: {e}"
             print(f"[LLMEngine] {error_msg}")
-            self.db.update_status(job_id, 'FAILED', error_message=error_msg)
+            # self.db.update_status(job_id, 'FAILED', error_message=error_msg)
             return False
 
         if not transcription.strip():
             error_msg = "STT 텍스트 내용이 비어있어 요약할 수 없습니다."
             print(f"[LLMEngine] {error_msg}")
-            self.db.update_status(job_id, 'FAILED', error_message=error_msg)
+            # self.db.update_status(job_id, 'FAILED', error_message=error_msg)
             return False
 
         # 2. 프롬프트 생성
@@ -140,7 +140,7 @@ class LLMEngine:
         except Exception as e:
             error_msg = f"LLM 추론 중 오류 발생: {e}"
             print(f"[LLMEngine] [ID {job_id}] {error_msg}")
-            self.db.update_status(job_id, 'FAILED', error_message=error_msg)
+            # self.db.update_status(job_id, 'FAILED', error_message=error_msg)
             return False
 
 

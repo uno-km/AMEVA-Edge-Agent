@@ -32,7 +32,8 @@ class STTEngine:
                         success_count += 1
                 except Exception as exc:
                     print(f"[STTEngine] 작업 처리 중 예외 발생 (ID: {job['id']}): {exc}")
-                    self.db.update_status(job['id'], 'FAILED', error_message=str(exc))
+                    # 실패 시 DB 상태를 FAILED로 변경하지 않고 기존 PENDING으로 두어 언제든지 재시도할 수 있도록 함
+                    # self.db.update_status(job['id'], 'FAILED', error_message=str(exc))
 
         print(f"[STTEngine] STT 처리 완료. 성공: {success_count}/{len(jobs)}")
         return success_count
@@ -45,7 +46,7 @@ class STTEngine:
         if not os.path.exists(original_path):
             error_msg = f"원본 파일이 존재하지 않습니다: {original_path}"
             print(f"[STTEngine] {error_msg}")
-            self.db.update_status(job_id, 'FAILED', error_message=error_msg)
+            # self.db.update_status(job_id, 'FAILED', error_message=error_msg)
             return False
 
         print(f"[STTEngine] 작업 시작 [ID {job_id}]: {original_path}")
@@ -68,7 +69,7 @@ class STTEngine:
         except Exception as e:
             error_msg = f"WAV 변환/전처리 오류: {e}"
             print(f"[STTEngine] [ID {job_id}] {error_msg}")
-            self.db.update_status(job_id, 'FAILED', error_message=error_msg)
+            # self.db.update_status(job_id, 'FAILED', error_message=error_msg)
             # 리소스 정리
             for p in [wav_path, cleaned_wav_path]:
                 if os.path.exists(p):
@@ -132,7 +133,7 @@ class STTEngine:
         except Exception as e:
             error_msg = f"STT 추론/파싱 중 오류 발생: {e}"
             print(f"[STTEngine] [ID {job_id}] {error_msg}")
-            self.db.update_status(job_id, 'FAILED', error_message=error_msg)
+            # self.db.update_status(job_id, 'FAILED', error_message=error_msg)
             # 실패 시 변환 파일 소거 시도
             if os.path.exists(wav_path):
                 try:
