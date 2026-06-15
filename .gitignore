@@ -34,3 +34,7 @@ stt/
 summary/
 db/
 temp_test_env/
+
+# 7. 음성 데이터 파일 임시 제외
+*음성 024*
+*음성024*
