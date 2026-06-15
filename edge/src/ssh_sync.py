@@ -1,6 +1,7 @@
 import os
 import subprocess
 import shutil
+from datetime import datetime
 from src.config import config
 from src.db import DBManager
 from src.shredder import shred_file, shred_database
@@ -80,6 +81,9 @@ class SSHSyncManager:
 
         print(f"[SSHSyncManager] [ID {job_id}] 파일 전송 시도 목록: {files_to_send}")
 
+        sync_started_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        sync_method = 'MOCK' if (config.ssh_host == "your.server.ip" or config.ssh_host == "mock") else 'SSH_SCP'
+
         # 1. 파일 업로드 실행
         upload_success = True
         for filepath in files_to_send:
@@ -92,7 +96,12 @@ class SSHSyncManager:
             print(f"[SSHSyncManager] [ID {job_id}] 전송 검증 성공. 로컬 파일 소거 처리를 진행합니다.")
             
             # DB 상태 업데이트
-            self.db.update_sync_status(job_id, 'SYNCED_ALL' if network == "HIGH_BANDWIDTH" else 'SYNCED_TEXT_ONLY')
+            self.db.update_sync_status(
+                job_id, 
+                'SYNCED_ALL' if network == "HIGH_BANDWIDTH" else 'SYNCED_TEXT_ONLY',
+                sync_started_at=sync_started_at,
+                sync_method=sync_method
+            )
             
             # 파일 안전 삭제 (원본 오디오 포함하여 생성된 임시 wav 및 txt 파일 전부 삭제)
             for filepath in files_to_send:
@@ -113,7 +122,13 @@ class SSHSyncManager:
             return True
         else:
             print(f"[SSHSyncManager] [ID {job_id}] 전송 실패로 인해 로컬 파일 보존 및 재시도 대기합니다.")
-            self.db.update_sync_status(job_id, 'FAILED', error_message="SSH 업로드 실패")
+            self.db.update_sync_status(
+                job_id, 
+                'FAILED', 
+                error_message="SSH 업로드 실패",
+                sync_started_at=sync_started_at,
+                sync_method=sync_method
+            )
             return False
 
     def sync_database_batch(self):
@@ -204,4 +219,63 @@ class SSHSyncManager:
             return False
         except Exception as e:
             print(f"[SSHSyncManager] 전송 중 오동작 발생: {e}")
+            return False
+
+    def test_ssh_connection(self):
+        """SSH/SCP 연동 상태를 사전에 진단하고 테스트합니다."""
+        print(f"[SSHSyncManager] 원격 호스트({config.ssh_host}:{config.ssh_port}) SSH 연결 테스트 시작...")
+        
+        if config.ssh_host == "your.server.ip" or config.ssh_host == "mock":
+            print("[SSHSyncManager] [MOCK] 연동 테스트 성공 (Mock 모드)")
+            return True
+
+        # 1. ping 테스트
+        print("[SSHSyncManager] 1단계: 네트워크 PING 테스트 진행 중...")
+        network = self.check_network_condition()
+        print(f" -> 네트워크 상태: {network}")
+
+        # 2. SSH 접속 및 기본 명령 실행 테스트
+        print("[SSHSyncManager] 2단계: SSH 터미널 접속 및 키 인증 테스트 진행 중...")
+        test_cmd = [
+            "ssh",
+            "-p", str(config.ssh_port),
+            "-i", config.ssh_key,
+            "-o", "StrictHostKeyChecking=no",
+            "-o", "ConnectTimeout=5",
+            f"{config.ssh_user}@{config.ssh_host}",
+            "echo 'SSH_CONNECTION_OK'"
+        ]
+        
+        try:
+            res = subprocess.run(test_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=10)
+            if res.returncode == 0 and "SSH_CONNECTION_OK" in res.stdout:
+                print(f"[SSHSyncManager] {config.ssh_host} 연결 및 인증에 성공했습니다!")
+                print(f" -> 원격지 응답: {res.stdout.strip()}")
+                
+                # 3. 디렉토리 쓰기 권한 테스트
+                print(f"[SSHSyncManager] 3단계: 원격 저장 폴더({config.ssh_remote_path}) 권한 테스트...")
+                write_test_cmd = [
+                    "ssh",
+                    "-p", str(config.ssh_port),
+                    "-i", config.ssh_key,
+                    "-o", "StrictHostKeyChecking=no",
+                    "-o", "ConnectTimeout=5",
+                    f"{config.ssh_user}@{config.ssh_host}",
+                    f"mkdir -p '{config.ssh_remote_path}' && touch '{config.ssh_remote_path}/.write_test' && rm '{config.ssh_remote_path}/.write_test' && echo 'WRITE_OK'"
+                ]
+                res_write = subprocess.run(write_test_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=10)
+                if res_write.returncode == 0 and "WRITE_OK" in res_write.stdout:
+                    print("[SSHSyncManager] 원격 폴더 쓰기/삭제 권한 확인 완료. 모든 연동이 완벽합니다! 🎉")
+                    return True
+                else:
+                    print(f"[SSHSyncManager] [경고] 원격 폴더 쓰기 권한 확인 실패: {res_write.stderr.strip()}")
+                    return False
+            else:
+                print(f"[SSHSyncManager] [실패] SSH 연결 실패 (인증키 혹은 포트 설정 확인 필요): {res.stderr.strip()}")
+                return False
+        except subprocess.TimeoutExpired:
+            print("[SSHSyncManager] [실패] SSH 연결 시간 초과 (서버가 켜져있는지 혹은 IP/포트가 맞는지 확인 필요)")
+            return False
+        except Exception as e:
+            print(f"[SSHSyncManager] [오류] 연동 테스트 중 오류 발생: {e}")
             return False

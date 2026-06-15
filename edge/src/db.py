@@ -37,14 +37,19 @@ class DBManager:
                         stt_started_at DATETIME,
                         stt_ended_at DATETIME,
                         llm_started_at DATETIME,
-                        llm_ended_at DATETIME
+                        llm_ended_at DATETIME,
+                        sync_started_at DATETIME,
+                        sync_method TEXT
                     );
                 """)
                 
                 # 기존 DB 마이그레이션 (동적 컬럼 추가)
-                for col in ["stt_started_at", "stt_ended_at", "llm_started_at", "llm_ended_at"]:
+                for col in ["stt_started_at", "stt_ended_at", "llm_started_at", "llm_ended_at", "sync_started_at", "sync_method"]:
                     try:
-                        cursor.execute(f"ALTER TABLE jobs ADD COLUMN {col} DATETIME;")
+                        if col == "sync_method":
+                            cursor.execute(f"ALTER TABLE jobs ADD COLUMN {col} TEXT;")
+                        else:
+                            cursor.execute(f"ALTER TABLE jobs ADD COLUMN {col} DATETIME;")
                     except sqlite3.OperationalError:
                         pass # 이미 컬럼이 존재하는 경우 무시
         finally:
@@ -145,8 +150,8 @@ class DBManager:
         finally:
             conn.close()
 
-    def update_sync_status(self, job_id, sync_status, error_message=None):
-        """동기화 진행 상태를 업데이트합니다."""
+    def update_sync_status(self, job_id, sync_status, error_message=None, sync_started_at=None, sync_method=None):
+        """동기화 진행 상태, 시작시간, 전송방식을 업데이트합니다."""
         conn = self.get_connection()
         try:
             with conn:
@@ -157,6 +162,12 @@ class DBManager:
                 if error_message is not None:
                     query += ", error_message = ?"
                     params.append(error_message)
+                if sync_started_at is not None:
+                    query += ", sync_started_at = ?"
+                    params.append(sync_started_at)
+                if sync_method is not None:
+                    query += ", sync_method = ?"
+                    params.append(sync_method)
                     
                 query += " WHERE id = ?"
                 params.append(job_id)
