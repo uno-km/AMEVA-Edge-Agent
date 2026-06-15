@@ -226,10 +226,10 @@ class STTEngine:
         if config.whisper_ko:
             cmd.extend(["-l", "ko"])
 
-        # whisper.cpp 명령어 실행
-        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        # whisper.cpp 명령어 실행 (실시간 로그 출력을 위해 파이프 대신 콘솔 상속)
+        result = subprocess.run(cmd, text=True)
         if result.returncode != 0:
-            raise RuntimeError(f"whisper.cpp 에러 코드 {result.returncode}. 에러 로그: {result.stderr}")
+            raise RuntimeError(f"whisper.cpp 에러 코드 {result.returncode}.")
 
     def _format_timestamp(self, ms):
         """밀리초 단위를 [시:분:초.밀리초] 형식으로 변환합니다."""
