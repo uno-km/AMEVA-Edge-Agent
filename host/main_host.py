@@ -1,6 +1,15 @@
 #!/usr/bin/env python3
 import sys
 import os
+
+# 표준 출력을 UTF-8로 강제 설정하여 윈도우에서 이모지 출력 시 인코딩 에러 방지
+if sys.platform.startswith('win'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stderr.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+
 import argparse
 import logging
 
@@ -137,6 +146,8 @@ def run_deploy(args):
         "--ssh-user", args.ssh_user,
         "--ssh-key", args.ssh_key
     ]
+    if getattr(args, "run_setup", False):
+        cmd.append("--run-setup")
     logger.info(f"[{args.mode.upper()}] 배포 시작: {args.ssh_user}@{args.ssh_host}:{args.ssh_port}")
     try:
         subprocess.run(cmd, check=True)
@@ -192,6 +203,7 @@ def main():
     deploy_parser.add_argument("--ssh-port", default=8022, type=int, help="Edge 기기 SSH Port")
     deploy_parser.add_argument("--ssh-user", default="a35", help="Edge 기기 SSH 계정")
     deploy_parser.add_argument("--ssh-key", default=os.path.expanduser("~/.ssh/id_rsa"), help="SSH Private Key 경로")
+    deploy_parser.add_argument("--run-setup", action="store_true", help="배포 후 setup.sh 자동 무인 실행")
 
     # shred 커맨드
     shred_parser = subparsers.add_parser("shred", help="에지 디바이스의 임시 구동 폴더를 원격으로 파쇄/자폭 시킵니다.")

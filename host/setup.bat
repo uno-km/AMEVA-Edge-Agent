@@ -44,10 +44,11 @@ rem 4. Install & Configure OpenSSH Server
 echo [SSH] Checking OpenSSH Server installation...
 sc query sshd >nul 2>&1
 if %errorLevel% neq 0 (
-    echo [SSH] OpenSSH Server is not installed. Installing via Portable Win32-OpenSSH...
+    echo [SSH] OpenSSH Server is not installed. Downloading and installing Portable OpenSSH...
     powershell -Command "Invoke-WebRequest -Uri 'https://github.com/PowerShell/Win32-OpenSSH/releases/download/v9.5.0.0p1-Beta/OpenSSH-Win64.zip' -OutFile '$env:TEMP\OpenSSH-Win64.zip'"
-    powershell -Command "Expand-Archive -Path '$env:TEMP\OpenSSH-Win64.zip' -DestinationPath 'C:\Program Files' -Force"
-    cd /d "C:\Program Files\OpenSSH-Win64"
+    powershell -Command "Expand-Archive -Path '$env:TEMP\OpenSSH-Win64.zip' -DestinationPath '$env:USERPROFILE\OpenSSH' -Force"
+    powershell -Command "Copy-Item -Path '$env:USERPROFILE\OpenSSH\OpenSSH-Win64' -Destination 'C:\OpenSSH' -Recurse -Force"
+    cd /d "C:\OpenSSH"
     powershell -ExecutionPolicy Bypass -File .\install-sshd.ps1
     cd /d "%~dp0"
 ) else (
@@ -55,12 +56,10 @@ if %errorLevel% neq 0 (
 )
 
 echo [SSH] Configuring sshd_config for key authentication bypass for administrators...
-powershell -Command "if (Test-Path 'C:\ProgramData\ssh\sshd_config') { (Get-Content -Path 'C:\ProgramData\ssh\sshd_config') -replace 'Match Group administrators', '#Match Group administrators' -replace 'AuthorizedKeysFile __PROGRAMDATA__/ssh/administrators_authorized_keys', '#       AuthorizedKeysFile __PROGRAMDATA__/ssh/administrators_authorized_keys' | Set-Content -Path 'C:\ProgramData\ssh\sshd_config' }"
+powershell -Command "if (Test-Path 'C:\ProgramData\ssh\sshd_config') { (Get-Content -Path 'C:\ProgramData\ssh\sshd_config') -replace 'Match Group administrators', '#Match Group administrators' -replace 'AuthorizedKeysFile __PROGRAMDATA__/ssh/administrators_authorized_keys', '#       AuthorizedKeysFile __PROGRAMDATA__/ssh/administrators_authorized_keys' | Set-Content -Path 'C:\ProgramData\ssh\sshd_config' } elseif (Test-Path 'C:\OpenSSH\sshd_config_default') { (Get-Content -Path 'C:\OpenSSH\sshd_config_default') -replace 'Match Group administrators', '#Match Group administrators' -replace 'AuthorizedKeysFile __PROGRAMDATA__/ssh/administrators_authorized_keys', '#       AuthorizedKeysFile __PROGRAMDATA__/ssh/administrators_authorized_keys' | Set-Content -Path 'C:\OpenSSH\sshd_config_default' }"
 
 echo [SSH] Starting SSH service and setting startup to Automatic...
-powershell -Command "Start-Service sshd"
-powershell -Command "Set-Service -Name sshd -StartupType 'Automatic'"
-powershell -Command "Restart-Service sshd"
+powershell -Command "Start-Service sshd -ErrorAction SilentlyContinue; if ($?) { Set-Service -Name sshd -StartupType 'Automatic' } else { sc.exe config sshd start= auto; net start sshd }"
 
 echo [SSH] Ensuring Firewall rule is configured...
 powershell -Command "if (!(Get-NetFirewallRule -Name 'OpenSSH-Server-In-TCP' -ErrorAction SilentlyContinue)) { New-NetFirewallRule -Name 'OpenSSH-Server-In-TCP' -DisplayName 'OpenSSH Server (sshd)' -Enabled True -Direction Inbound -Protocol TCP -LocalPort 22 -Action Allow }"

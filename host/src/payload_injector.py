@@ -8,6 +8,14 @@ import uuid
 from pathlib import Path
 import stat
 
+# 표준 출력을 UTF-8로 강제 설정하여 윈도우에서 이모지 출력 시 인코딩 에러 방지
+if sys.platform.startswith('win'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stderr.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+
 # 호스트 기준 AMEVA 프로젝트 루트 경로 산출
 HOST_SRC_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(os.path.dirname(HOST_SRC_DIR))
@@ -27,7 +35,7 @@ def check_ssh_connection(host, port, user, key_path):
         "echo 'SSH_CONNECTION_OK'"
     ]
     try:
-        result = subprocess.run(ssh_cmd, capture_output=True, text=True, check=True)
+        result = subprocess.run(ssh_cmd, capture_output=True, text=True, encoding="utf-8", check=True)
         if "SSH_CONNECTION_OK" in result.stdout:
             print("[검증] SSH 연결 성공!")
             return True
@@ -68,12 +76,7 @@ def create_payload(mode="dev"):
                     zipf.write(file_path, arcname)
 
     print(f"[압축] 완료: {payload_zip}")
-    
-    with open(payload_zip, "rb") as f:
-        encoded_payload = base64.b64encode(f.read()).decode('utf-8')
-    
-    os.remove(payload_zip)
-    return encoded_payload
+    return payload_zip
 
 def deploy_agent(args):
     """에지 에이전트 주입 및 실행"""
@@ -87,63 +90,117 @@ def deploy_agent(args):
         sys.exit(1)
 
     # 2. 페이로드 생성
-    encoded_payload = create_payload(args.mode)
-    
-    # 3. 원격 실행 스크립트 동적 생성
-    remote_base_dir = "/data/data/com.termux/files/home" # Termux 기본 경로. 실제 기기 환경에 따라 조정 가능.
-    
-    if args.mode == "prd":
-        # PRD: 은닉 폴더, 난독화, 쉘 히스토리 끄기, 환경 변수 주입
-        run_id = str(uuid.uuid4())[:8]
-        target_dir = f"{remote_base_dir}/.sys_cache_{run_id}"
-        
-        # 주입될 쉘 스크립트
-        remote_script = f"""
-        export HISTFILE=/dev/null
-        export AGENT_MODE=prd
-        export INJECTED_KEY="secret_key_placeholder"
-        
-        mkdir -p {target_dir}
-        cd {target_dir}
-        
-        echo "{encoded_payload}" | base64 -d > payload.zip
-        unzip -q payload.zip
-        rm payload.zip
-        
-        # 백그라운드 실행 (stdout/stderr는 /dev/null로)
-        nohup python3 main_edge.py daemon > /dev/null 2>&1 &
-        echo "[PRD] 에이전트가 은닉 폴더({target_dir})에서 백그라운드로 성공적으로 주입/실행되었습니다."
-        """
-    else:
-        # DEV: 기존 폴더 덮어쓰기, 포그라운드/백그라운드 등 제어 가능, 로그 남김
-        target_dir = f"{remote_base_dir}/dev/ameva-agent"
-        remote_script = f"""
-        export AGENT_MODE=dev
-        
-        mkdir -p {target_dir}
-        cd {target_dir}
-        
-        echo "{encoded_payload}" | base64 -d > payload.zip
-        unzip -qo payload.zip
-        rm payload.zip
-        
-        echo "[DEV] 에이전트 소스가 {target_dir} 에 성공적으로 배포/업데이트 되었습니다."
-        echo "[DEV] 필요 시 수동으로 ./run.sh 를 실행하세요."
-        """
-
-    # 4. SSH로 원격 스크립트 실행
-    print(f"[주입] {args.mode.upper()} 모드 페이로드 주입 중...")
-    ssh_cmd = [
-        "ssh",
-        "-i", args.ssh_key,
-        "-p", str(args.ssh_port),
-        "-o", "StrictHostKeyChecking=no",
-        f"{args.ssh_user}@{args.ssh_host}",
-        remote_script
-    ]
+    payload_zip_path = create_payload(args.mode)
     
     try:
-        result = subprocess.run(ssh_cmd, capture_output=True, text=True, check=True)
+        # 3. 원격 실행 스크립트 동적 생성
+        remote_base_dir = "/data/data/com.termux/files/home" # Termux 기본 경로. 실제 기기 환경에 따라 조정 가능.
+        
+        if args.mode == "prd":
+            # PRD: 은닉 폴더, 난독화, 쉘 히스토리 끄기, 환경 변수 주입
+            run_id = str(uuid.uuid4())[:8]
+            target_dir = f"{remote_base_dir}/.sys_cache_{run_id}"
+            
+            # 원격 디렉토리 생성
+            mkdir_cmd = [
+                "ssh",
+                "-i", args.ssh_key,
+                "-p", str(args.ssh_port),
+                "-o", "StrictHostKeyChecking=no",
+                f"{args.ssh_user}@{args.ssh_host}",
+                f"mkdir -p {target_dir}"
+            ]
+            subprocess.run(mkdir_cmd, check=True)
+            
+            # SCP로 payload.zip 전송
+            scp_cmd = [
+                "scp",
+                "-i", args.ssh_key,
+                "-P", str(args.ssh_port),
+                "-o", "StrictHostKeyChecking=no",
+                payload_zip_path,
+                f"{args.ssh_user}@{args.ssh_host}:{target_dir}/payload.zip"
+            ]
+            subprocess.run(scp_cmd, check=True)
+            
+            # 주입될 쉘 스크립트
+            remote_script = f"""
+            export HISTFILE=/dev/null
+            export AGENT_MODE=prd
+            export INJECTED_KEY="secret_key_placeholder"
+            
+            cd {target_dir}
+            unzip -q payload.zip
+            rm payload.zip
+            
+            # 백그라운드 실행 (stdout/stderr는 /dev/null로)
+            nohup python3 main_edge.py daemon > /dev/null 2>&1 &
+            echo "[PRD] 에이전트가 은닉 폴더({target_dir})에서 백그라운드로 성공적으로 주입/실행되었습니다."
+            """
+        else:
+            # DEV: 기존 폴더 덮어쓰기, 포그라운드/백그라운드 등 제어 가능, 로그 남김
+            target_dir = f"{remote_base_dir}/dev/ameva-agent"
+            
+            # 원격 디렉토리 생성
+            mkdir_cmd = [
+                "ssh",
+                "-i", args.ssh_key,
+                "-p", str(args.ssh_port),
+                "-o", "StrictHostKeyChecking=no",
+                f"{args.ssh_user}@{args.ssh_host}",
+                f"mkdir -p {target_dir}"
+            ]
+            subprocess.run(mkdir_cmd, check=True)
+            
+            # SCP로 payload.zip 전송
+            scp_cmd = [
+                "scp",
+                "-i", args.ssh_key,
+                "-P", str(args.ssh_port),
+                "-o", "StrictHostKeyChecking=no",
+                payload_zip_path,
+                f"{args.ssh_user}@{args.ssh_host}:{target_dir}/payload.zip"
+            ]
+            subprocess.run(scp_cmd, check=True)
+            
+            if getattr(args, "run_setup", False):
+                remote_script = f"""
+                export AGENT_MODE=dev
+                
+                cd {target_dir}
+                unzip -qo payload.zip
+                rm payload.zip
+                
+                echo "[DEV] 에이전트 소스가 {target_dir} 에 성공적으로 배포/업데이트 되었습니다."
+                echo "[DEV] 자동으로 setup.sh 무인 설치를 진행합니다..."
+                export AUTO_INSTALL=true
+                chmod +x setup.sh
+                bash setup.sh
+                """
+            else:
+                remote_script = f"""
+                export AGENT_MODE=dev
+                
+                cd {target_dir}
+                unzip -qo payload.zip
+                rm payload.zip
+                
+                echo "[DEV] 에이전트 소스가 {target_dir} 에 성공적으로 배포/업데이트 되었습니다."
+                echo "[DEV] 필요 시 수동으로 ./run.sh 를 실행하세요."
+                """
+
+        # 4. SSH로 원격 스크립트 실행
+        print(f"[주입] {args.mode.upper()} 모드 페이로드 주입 중...")
+        ssh_cmd = [
+            "ssh",
+            "-i", args.ssh_key,
+            "-p", str(args.ssh_port),
+            "-o", "StrictHostKeyChecking=no",
+            f"{args.ssh_user}@{args.ssh_host}",
+            remote_script
+        ]
+        
+        result = subprocess.run(ssh_cmd, capture_output=True, text=True, encoding="utf-8", check=True)
         print("\n--- 에지 디바이스 응답 ---")
         print(result.stdout)
         print("--------------------------")
@@ -151,6 +208,9 @@ def deploy_agent(args):
     except subprocess.CalledProcessError as e:
         print(f"[오류] 주입 중 에러 발생:\n{e.stderr}")
         sys.exit(1)
+    finally:
+        if os.path.exists(payload_zip_path):
+            os.remove(payload_zip_path)
 
 def send_shred_command(args):
     """에지 디바이스에 원격 파쇄(Shred) 명령 전송"""
@@ -188,7 +248,7 @@ def send_shred_command(args):
     ]
     
     try:
-        result = subprocess.run(ssh_cmd, capture_output=True, text=True, check=True)
+        result = subprocess.run(ssh_cmd, capture_output=True, text=True, encoding="utf-8", check=True)
         print("\n--- 에지 디바이스 응답 ---")
         print(result.stdout)
         print("--------------------------")
@@ -207,6 +267,7 @@ if __name__ == "__main__":
     parser_deploy.add_argument("--ssh-port", default="8022", help="Edge 기기 SSH Port")
     parser_deploy.add_argument("--ssh-user", default="a35", help="Edge 기기 SSH 계정")
     parser_deploy.add_argument("--ssh-key", default=os.path.expanduser("~/.ssh/id_rsa"), help="SSH Private Key 경로")
+    parser_deploy.add_argument("--run-setup", action="store_true", help="배포 후 setup.sh 자동 무인 실행")
     
     # shred action
     parser_shred = subparsers.add_parser("shred", help="에지 디바이스의 임시 구동 폴더를 원격으로 파쇄(자폭)합니다.")

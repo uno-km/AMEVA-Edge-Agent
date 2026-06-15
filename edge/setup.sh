@@ -73,15 +73,24 @@ mkdir -p "${AGENT_DIR}/db"
 mkdir -p "${AGENT_DIR}/src"
 
 # 4. 소스 코드 복사 (현재 개발 디렉토리에서 고정 경로로 전송)
-echo -e "[동기화] 개발 소스 파일을 고정 폴더로 복사합니다..."
-cp -r src/* "${AGENT_DIR}/src/"
-cp main_edge.py "${AGENT_DIR}/"
-cp help.py "${AGENT_DIR}/"
-cp run.sh "${AGENT_DIR}/"
-cp run_daemon.sh "${AGENT_DIR}/"
-chmod +x "${AGENT_DIR}/run.sh"
-chmod +x "${AGENT_DIR}/run_daemon.sh"
-chmod +x "${AGENT_DIR}/help.py"
+# 현재 디렉토리가 고정 구동 경로와 동일한 경우 복사를 생략합니다.
+CURRENT_ABS_DIR=$(pwd)
+AGENT_ABS_DIR=$(cd "${AGENT_DIR}" && pwd || echo "${AGENT_DIR}")
+
+if [ "$CURRENT_ABS_DIR" != "$AGENT_ABS_DIR" ]; then
+    echo -e "[동기화] 개발 소스 파일을 고정 폴더로 복사합니다..."
+    cp -r src/* "${AGENT_DIR}/src/"
+    cp main_edge.py "${AGENT_DIR}/"
+    cp help.py "${AGENT_DIR}/"
+    cp run.sh "${AGENT_DIR}/"
+    cp run_daemon.sh "${AGENT_DIR}/"
+else
+    echo -e "[동기화] 현재 디렉토리가 고정 구동 경로(${AGENT_DIR})와 동일하므로 복사를 생략합니다."
+fi
+
+chmod +x "${AGENT_DIR}/run.sh" 2>/dev/null || true
+chmod +x "${AGENT_DIR}/run_daemon.sh" 2>/dev/null || true
+chmod +x "${AGENT_DIR}/help.py" 2>/dev/null || true
 
 # .env 설정 파일 동기화 (.env 가 고정 폴더 내부에 없으면 생성하고, 이미 있다면 덮어쓰지 않음)
 if [ ! -f "${AGENT_DIR}/.env" ]; then
@@ -127,23 +136,13 @@ echo -e "사용 가능한 모델 체급:"
 echo -e "  1) tiny (약 75MB, 최고 속도, 정확도 보통)"
 echo -e "  2) base (약 142MB, 빠른 속도, 정확도 준수 - 추천)"
 echo -e "  3) small (약 466MB, 보통 속도, 정확도 높음)"
-read -p "사용할 모델 체급 번호를 선택하세요 (1-3, 기본값 2): " model_choice
 
-SELECTED_MODEL="base"
-if [ "$model_choice" = "1" ]; then
-    SELECTED_MODEL="tiny"
-elif [ "$model_choice" = "3" ]; then
-    SELECTED_MODEL="small"
+if [ "$AUTO_INSTALL" = "true" ] || [ "$NON_INTERACTIVE" = "true" ]; then
+    echo -e "[자동] 무인 설치 모드가 활성화되었습니다. 기본 모델 'base'를 선택합니다."
+    model_choice="2"
+else
+    read -p "사용할 모델 체급 번호를 선택하세요 (1-3, 기본값 2, 예: 1,3 또는 123): " model_choice
 fi
-
-WHISPER_MODEL_FILE="${HOME}/dev/whisper.cpp/models/ggml-base.bin"
-
-echo -e "\n--- [STT 구성] whisper.cpp 및 모델 설치 ---"
-echo -e "사용 가능한 모델 체급:"
-echo -e "  1) tiny (약 75MB, 최고 속도, 정확도 보통)"
-echo -e "  2) base (약 142MB, 빠른 속도, 정확도 준수 - 추천)"
-echo -e "  3) small (약 466MB, 보통 속도, 정확도 높음)"
-read -p "사용할 모델 체급 번호를 선택하세요 (1-3, 기본값 2, 예: 1,3 또는 123): " model_choice
 
 # 입력 값 파싱 및 다중 선택 지원
 if [ -z "$model_choice" ]; then
@@ -204,7 +203,12 @@ if [ "$NEED_WHISPER_BUILD" = false ] && [ ${#MISSING_MODELS[@]} -eq 0 ]; then
     echo -e "[스캔] ${GREEN}whisper.cpp 빌드 및 선택한 모델 파일들이 모두 준비되어 있습니다.${NC}"
 else
     echo -e "[설치] whisper.cpp 빌드 또는 선택한 모델 파일이 누락되었습니다."
-    read -p "whisper.cpp 및 누락된 모델(${MISSING_MODELS[*]})을 다운로드하고 빌드하시겠습니까? (y/n): " build_whisper
+    if [ "$AUTO_INSTALL" = "true" ] || [ "$NON_INTERACTIVE" = "true" ]; then
+        echo -e "[자동] 무인 설치 모드가 활성화되었습니다. whisper.cpp 및 모델을 빌드합니다."
+        build_whisper="y"
+    else
+        read -p "whisper.cpp 및 누락된 모델(${MISSING_MODELS[*]})을 다운로드하고 빌드하시겠습니까? (y/n): " build_whisper
+    fi
     if [ "$build_whisper" = "y" ] || [ "$build_whisper" = "Y" ]; then
         echo -e "[설치] whisper.cpp 리포지토리를 클론합니다..."
         mkdir -p "${HOME}/dev"
@@ -259,7 +263,12 @@ if [ -f "$LLAMA_MAIN" ]; then
     echo -e "[스캔] ${GREEN}llama.cpp (llama-cli) 빌드 상태 확인 완료.${NC}"
 else
     echo -e "${YELLOW}[안내] llama.cpp (llama-cli) 바이너리가 발견되지 않았습니다."
-    read -p "llama.cpp를 자동 다운로드하고 Galaxy A35 최적화(ARM NEON/DOTPROD) 옵션으로 빌드하시겠습니까? (y/n): " build_llama
+    if [ "$AUTO_INSTALL" = "true" ] || [ "$NON_INTERACTIVE" = "true" ]; then
+        echo -e "[자동] 무인 설치 모드가 활성화되었습니다. llama.cpp를 다운로드하고 빌드합니다."
+        build_llama="y"
+    else
+        read -p "llama.cpp를 자동 다운로드하고 Galaxy A35 최적화(ARM NEON/DOTPROD) 옵션으로 빌드하시겠습니까? (y/n): " build_llama
+    fi
     if [ "$build_llama" = "y" ] || [ "$build_llama" = "Y" ]; then
         echo -e "[설치] llama.cpp 리포지토리를 클론합니다..."
         mkdir -p "${HOME}/.shitty_phone_ai"
@@ -292,7 +301,13 @@ if command -v ollama >/dev/null 2>&1; then
     echo -e "설치 가능한 권장 모델 체급:"
     echo -e "  1) qwen2.5:0.5b (약 350MB, 초경량, 모바일 강추, 튕김 없음)"
     echo -e "  2) llama3.2:3b  (약 2.0GB, 높은 퀄리티, 충분한 메모리 필요)"
-    read -p "풀(Pull)할 LLM 모델 번호를 선택하세요 (1-2, 기본값 1, 예: 1,2 또는 12): " llm_choice
+    
+    if [ "$AUTO_INSTALL" = "true" ] || [ "$NON_INTERACTIVE" = "true" ]; then
+        echo -e "[자동] 무인 설치 모드가 활성화되었습니다. 기본 모델 'qwen2.5:0.5b'를 선택합니다."
+        llm_choice="1"
+    else
+        read -p "풀(Pull)할 LLM 모델 번호를 선택하세요 (1-2, 기본값 1, 예: 1,2 또는 12): " llm_choice
+    fi
     
     if [ -z "$llm_choice" ]; then
         llm_choice="1"
@@ -320,6 +335,13 @@ if command -v ollama >/dev/null 2>&1; then
         OLLAMA_SELECTED_MODEL="llama3.2:3b"
     fi
     
+    # Ollama 백그라운드 서버 가동 여부 확인 및 미실행 시 백그라운드 가동
+    if ! curl -s http://127.0.0.1:11434/api/tags > /dev/null; then
+        echo -e "[실행] Ollama 서버가 작동하지 않고 있습니다. 백그라운드에서 임시 가동합니다..."
+        ollama serve > /dev/null 2>&1 &
+        sleep 5
+    fi
+    
     if [ "$WANT_QWEN" = true ]; then
         echo -e "[모델] qwen2.5:0.5b 모델을 원격 저장소에서 풀(pull)합니다..."
         ollama pull "qwen2.5:0.5b"
@@ -330,7 +352,12 @@ if command -v ollama >/dev/null 2>&1; then
     fi
 else
     echo -e "[설치] Ollama가 설치되어 있지 않습니다."
-    read -p "Ollama를 설치하시겠습니까? (y/n): " install_ollama
+    if [ "$AUTO_INSTALL" = "true" ] || [ "$NON_INTERACTIVE" = "true" ]; then
+        echo -e "[자동] 무인 설치 모드가 활성화되었습니다. Ollama를 설치합니다."
+        install_ollama="y"
+    else
+        read -p "Ollama를 설치하시겠습니까? (y/n): " install_ollama
+    fi
     if [ "$install_ollama" = "y" ] || [ "$install_ollama" = "Y" ]; then
         if [ "$IS_TERMUX" = true ]; then
             echo -e "[설치] Termux 패키지 관리자로 Ollama를 설치합니다..."
