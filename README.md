@@ -2,15 +2,6 @@
 
 > **[프로젝트 요약 (Resume Profile)]**
 > 
-> ```mermaid
-> flowchart LR
->     A["Data Acquisition<br/>(📍 HERE)"]:::current --> B["Data Processing<br/>& Storage"]
->     B --> C["Model Training"]
->     C --> D["Model Deployment"]
->     D --> E["Monitoring"]
->     classDef current fill:#000,stroke:#333,stroke-width:2px,color:#fff;
-> ```
-> 
 > * **① 제목:** MLOps 모바일 엣지 데이터 수집 파이프라인 (AMEVA Edge Agent)
 > * **② 주제:** 
 >   * MLOps 파이프라인의 데이터 수집(Data Acquisition) 노드로서, 모바일 엣지 환경에서 오디오 데이터 수집부터 STT/LLM 전처리 및 호스트 동기화까지 수행하는 보안 지향적 아키텍처 구축
@@ -18,16 +9,37 @@
 > * **③ 내용요지:**
 >   * **사용 기술:** `Python 3` (Standard Library Only), `SQLite3`, `Shell Scripting`, `SSH/SCP Tunneling`
 >   * **사용 모델:** `Whisper.cpp (Small)` (STT), `BitNet-b1.58-2B-4T (GGUF, i2_s)` (LLM)
->   * **보안 아키텍처:** 호스트 주도형 동적 페이로드 주입(Payload Injection), 쉘 히스토리 차단(`HISTFILE=/dev/null`) 및 임시 은닉 폴더(`.sys_cache`) 기반 스크립트 실행(Zero-Footprint), 평문 키리스(Keyless) 환경 변수 동적 주입, 데이터 식별자 난수화(UUID), 4096 bytes 청크 단위 난수(`/dev/urandom`) 3회 덮어쓰기(Secure Erase), 프로세스 강제 종료 감지 자폭(Self-Destruct) 메커니즘, 데이터 동기화 완료 후 즉각적인 원본 소거 및 호스트의 원격 파쇄(Remote Shred) 명령 지원
+>   * **트러블슈팅:**
+>     * **SIMD 가속:** 컴파일러 최적화 누락 및 C++ const correctness 오류로 빌드 실패 및 느린 속도가 발생하여, C++ 커널 패치 적용 및 `-march=armv8.2-a+dotprod` 플래그 강제 주입으로 갤럭시 A35에서 3.01 tokens/sec 확보
+>     * **메모리(OOM) 방지:** STT와 LLM 병렬 실행 시 메모리 한계로 안드로이드 LMK(Low Memory Killer)에 의해 프로세스가 강제 종료되어, 추론 직렬 실행 제어 및 완료 즉시 메모리 회수(Ollama 강제 종료) 프로세스를 구현하여 해결
+>     * **인식 정확도 개선:** 배경 노이즈 및 무음 구간으로 인해 Whisper.cpp가 동일한 대사를 무한 반복 전사하고 연산 시간이 급증하여, FFmpeg 필터 체인(highpass, lowpass, silenceremove) 기반 클린 오디오 생성 파이프라인을 연동하여 해결
+>   * **트레이드오프:**
+>     * **STT 모델 선택:** 한국어 음성 인식률이 높은 `Small`(466MB) 모델은 갤럭시 A35에서 연산 지연이 심했으나 `Tiny`나 `Base` 모델은 오인식이 빈번하여, AP 연산력이 우수한 갤럭시 S20에서는 `Small` 모델을 구동하고 중급기인 갤럭시 A35에서는 속도와 정확도의 절충안인 `Base` 모델을 구동하도록 `.env` 설정을 기기 사양별로 이원화함
+>     * **LLM 모델 선택:** 한국어 요약 품질이 높은 `Llama 3.2 3B`는 갤럭시 A35에서 OOM 튕김 및 과도한 스로틀링을 유발하고 초경량 `Qwen 2.5 0.5B`는 가볍지만 요약 문장력이 다소 떨어져, 순간 처리량이 좋은 갤럭시 S20은 `BitNet 2B` / `Llama 3B`를 매핑하고 갤럭시 A35는 안정성이 검증된 `Qwen 0.5B`를 탑재하도록 기기별 모델 사양을 개별 최적화함
+>     * **수집 데이터 보존 및 DB 설계:** 엣지 수집 노드에서 로컬 데이터 유실(네트워크 단절 등)을 막기 위한 로컬 영구 보존 방식은 물리적 분실 시 포렌식 노출 위험이 생겨, 임시 버퍼용 `SQLite3` 로컬 DB에 수집 메타데이터를 1차 격리 적재하고 배치 스케줄러(21시, 23시)에 맞춰 호스트 서버로 SCP 무결성 동기화가 완료된 즉시 로컬 데이터와 DB 영역을 블록 단위로 덮어써 안전 소거(Secure Erase)하는 수집 아키텍처 채택
+>   * **보안 아키텍처:**
+>     * 호스트 주도형 동적 페이로드 주입(Payload Injection) 및 평문 키리스(Keyless) 환경 변수 동적 주입
+>     * 쉘 히스토리 차단(`HISTFILE=/dev/null`) 및 임시 은닉 폴더(`.sys_cache`) 기반 스크립트 실행(Zero-Footprint)
+>     * 데이터 식별자 난수화(UUID) 및 4096 bytes 청크 단위 난수(`/dev/urandom`) 3회 덮어쓰기(Secure Erase)
+>     * 프로세스 강제 종료 감지 시 데이터 즉각 무효화(Data Invalidization) 및 호스트의 원격 파쇄(Remote Shred) 명령 지원
 > * **④ 기여도:** 단독 개발 (100%)
+
+```mermaid
+flowchart LR
+    A["Data Acquisition (HERE)"]:::current --> B["Data Processing & Storage"]
+    B --> C["Model Training"]
+    C --> D["Model Deployment"]
+    D --> E["Monitoring"]
+    classDef current fill:#000,stroke:#333,stroke-width:2px,color:#fff;
+```
 
 ---
 
-## 1. 프로젝트 비전 (MLOps Data Acquisition)
+## 1. 개발 및 연구 목적 (Development & Research Purpose)
 
 **AMEVA Edge Agent**는 MLOps 파이프라인에서 **초기 데이터 수집(Data Acquisition)**을 담당하는 엣지 노드입니다. 
-단순한 데이터 수집을 넘어, 엣지(Edge) 환경에서 1차적인 AI 추론(STT 및 텍스트 요약)을 수행하여 **메인 서버의 전처리 부하를 분산하는 아키텍처**를 목표로 합니다.
-현재는 음성(Audio) 데이터 파이프라인을 구축하였으나, 향후 이미지 및 비디오 전처리 결과를 메인 서버로 배치(Batch) 동기화하는 범용 수집 모듈로 확장 가능하도록 설계되었습니다.
+본 프로젝트의 핵심 개발 및 연구 목적은 단순히 데이터를 수집해 메인 서버로 전달하는 것을 넘어, **엣지(Edge) 기기 자체의 컴퓨팅 자원을 활용한 1차적인 AI 추론(STT 및 텍스트 요약) 오프로딩(Offloading) 아키텍처의 효용성을 검증**하는 데 있습니다.
+현재는 음성(Audio) 데이터를 위주로 메인 서버의 전처리 부하를 분산하는 로직을 구축하였으나, 향후 이미지 및 비디오 전처리 결과까지 메인 서버로 배치(Batch) 동기화하는 범용 MLOps 수집 모듈로 확장 가능하도록 설계되었습니다.
 
 ---
 
@@ -52,6 +64,32 @@
 - **예상 소요 시간**: 파일당 평균 3~5분이 소요되며, 300개 처리 시 기기 컴퓨팅 자원의 상당 부분을 장시간 점유하게 됩니다.
 - **OOM(Out of Memory) 문제**: 모바일 환경에서 Whisper와 LLM 모델을 반복적으로 메모리에 로드/언로드 하는 과정에서 OOM 발생 리스크가 존재합니다.
 - **최종 결론**: **"최신 중급기 이상의 디바이스에서 소형 양자화 모델(1.58b~3b)을 구동하여 서버 전처리를 분산하는 것은 아키텍처 관점에서 유의미하나, 저가형 또는 구형 모델에서 엣지 추론을 수행하는 것은 메모리 병목 및 스로틀링으로 인해 시스템 불안정을 초래할 수 있다."**
+
+### 2.3 모바일 엣지 STT/LLM 트러블슈팅 (Troubleshooting)
+
+모바일 기기의 극도로 제한된 하드웨어 자원에서 C++ 기반 경량 AI 추론 엔진을 구동하는 과정에서 다양한 문제를 극복하였습니다.
+
+1. **ARM64 NEON & DotProd SIMD 최적화 및 C++ 커널 패치 (`patch_bitnet.py`)**
+   - **문제 상황**: BitNet.cpp/llama.cpp를 갤럭시 A35(Exynos 1380, ARMv8.2-A) 환경에서 기본 플래그로 컴파일 시 NEON/DotProd 명령어 세트가 비활성화되어 추론 속도가 극도로 느려짐(1 token/sec 미만). 또한 Clang 21 빌드 시 const 시그니처 불일치 및 QK=128 정렬 관련 메모리 접근 결함으로 런타임 크래시가 유발됨.
+   - **해결 방안**: C++ 소스 코드 수준에서 `ggml-bitnet-mad.cpp` 파일의 NEON 커널 매핑(QK=128 AVX2 블록 매핑 강제 및 `vdotq_s32` 매크로 활성화)을 직접 수정하는 `patch_bitnet.py` 컴파일 자동화 스크립트를 설계함. `-DGGML_ARM_DOTPROD=ON` 및 `-march=armv8.2-a+dotprod` 플래그를 강제하여 갤럭시 A35에서 **3.01 tokens/sec**의 최적 추론 속도를 확보함.
+2. **OOM(Out of Memory)으로 인한 안드로이드 LMK(Low Memory Killer) 프로세스 강제 종료 방지**
+   - **문제 상황**: 가용 RAM이 6GB~8GB 수준인 모바일 엣지 기기에서 Whisper.cpp (Small 모델, ~466MB)와 BitNet 2B (GGUF, ~1.2GB)를 동시 가동하거나 다중 스레드로 병렬 실행 시 임계 메모리를 초과하여 파이썬 프로세스가 강제 킬(Kill)되는 문제 발생.
+   - **해결 방안**: 배치 처리 아키텍처를 철저한 **직렬(Sequential) 구동** 방식으로 전면 변경함. STT 변환 완료 후 Whisper 모델 객체와 메모리 점유를 해제한 뒤 LLM 엔진을 로드하도록 제어 흐름을 분리하였으며, Ollama 연동 시에도 배치 세션 종료 즉시 백그라운드 프로세스를 즉시 `pkill`/`taskkill`하는 메모리 회수 메커니즘을 적용함.
+   - **추가 조치**: 모바일 환경에서 Ninja 컴파일 중 모든 CPU 코어가 점유되어 시스템 메모리 고갈로 폰이 멈추거나 빌드가 취소되는 현상을 방지하고자, `ninja -j 4`로 빌드 병렬 스레드를 의도적으로 제한함.
+3. **주변 노이즈 및 무음 구간으로 인한 Whisper.cpp 추론 지연 및 오인식**
+   - **문제 상황**: 마이크로 유입되는 저주파 소음(Humming)이나 일정 시간의 무음 구간으로 인해 Whisper.cpp 엔진이 동일한 단어를 무한 반복 생성하거나, 오인식으로 인해 추론 시간이 무한정 늘어나는 병목 발생.
+   - **해결 방안**: STT 엔진 진입 전 `FFmpeg` 필터 체인(`highpass=f=80, lowpass=f=8000, afftdn, volume=1.5, silenceremove=...`)을 결합한 클린 오디오 생성 파이프라인을 구축함. 무음 제거 및 노이즈 필터링이 선행된 클린 오디오로만 Whisper.cpp를 호출하도록 설계하여 STT 인식 속도와 대사 판별 정확도를 개선함.
+
+### 2.4 기술적 트레이드오프 (Trade-offs)
+
+모바일 엣지 디바이스에서의 독자적 AI 전처리와 호스트 서버 집약형 처리 간의 트레이드오프를 아래와 같이 분석하고 수용하였습니다.
+
+*   **엣지 오프로딩(Offloading) vs 서버 집중형 처리**
+    *   **득(Gain - 대역폭 및 서버 자원 절약)**: 음성 파일 전체(10~20분 분량 기준 수십 MB)를 중앙 서버로 전송할 필요가 없어, 불안정한 현장 모바일 네트워크 환경에서도 전송 비용과 네트워크 실패율을 극적으로 절감함. 요약된 결과 텍스트(수 KB)와 메타데이터만 전송하므로 서버의 일시적 대량 수집 병목을 완화하고 데이터 주권 및 개인정보 프라이버시를 강화함.
+    *   **실(Loss - 모바일 하드웨어 스트레스)**: 연산 소모량이 크므로 엣지 기기의 배터리가 급격히 소모되고 과열이 수반됨. 단시간 집중 처리 시 쾌적하지만, 지속적인 대용량 배치 처리 시 스로틀링(Throttling)으로 인해 고성능 AP(Snapdragon 865) 조차 성능이 급격히 저하되므로, 지속 처리 시에는 중급기인 Exynos 1380(갤럭시 A35)의 안정적이고 지속적인 냉각 마진이 더 적합한 트레이드오프 타겟이 됨.
+*   **모델 경량/양자화(Quantization) vs 추론 정확도(Accuracy)**:
+    *   **경량 모델(BitNet i2_s 2B / Whisper Small) 수용**: 엣지 기기의 제한된 RAM 영역에 탑재하고 토큰 생성 속도를 실용적인 수준(3 tokens/sec)으로 유지하기 위해 극단적인 저비트 양자화 모델을 채택함.
+    *   **추론 정확도 감쇄**: 경량화의 대가로 고용량 서버급 모델(예: FP16 Llama-3 8B) 대비 문맥 요약의 정교함이 낮아지고 미세한 뉘앙스를 놓치거나, 한국어 문장 구조에서 간헐적인 환각(Hallucination)이 나타남. 따라서 정교한 추론이 필요한 영역은 서버에서 2차 보정을 하거나 요약 결과를 보조적인 검증 데이터로만 활용하도록 파이프라인 역할을 제한함.
 
 ---
 
