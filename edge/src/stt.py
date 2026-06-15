@@ -59,10 +59,17 @@ class STTEngine:
         filename = os.path.basename(original_path)
         base_name, _ = os.path.splitext(filename)
         
-        # 보존용 오디오 파일 (원본 배경 소음을 포함한 일반 변환 WAV)
-        wav_path = os.path.join(config.audio_dir, f"converted_{base_name}_{job_id}.wav")
-        # STT 추론용 전처리 오디오 파일 (노이즈 필터링 및 무음부 소거)
-        cleaned_wav_path = os.path.join(config.audio_dir, f"cleaned_{base_name}_{job_id}.wav")
+        import uuid
+        if config.agent_mode == "prd":
+            # PRD 모드: uuid4 기반으로 완전 난독화
+            uid = str(uuid.uuid4())
+            wav_path = os.path.join(config.audio_dir, f"{uid}_w.wav")
+            cleaned_wav_path = os.path.join(config.audio_dir, f"{uid}_c.wav")
+            base_name_for_stt = uid
+        else:
+            base_name_for_stt = f"{base_name}_{job_id}"
+            wav_path = os.path.join(config.audio_dir, f"converted_{base_name_for_stt}.wav")
+            cleaned_wav_path = os.path.join(config.audio_dir, f"cleaned_{base_name_for_stt}.wav")
         
         try:
             # 1a. 보존용 원본 WAV 변환 (배경 소음 유지)
@@ -84,7 +91,11 @@ class STTEngine:
             return False
 
         # 2. whisper.cpp 실행 및 정밀 타임스탬프 텍스트 가공
-        stt_output_base = os.path.join(config.stt_dir, f"stt_{base_name}_{job_id}")
+        if config.agent_mode == "prd":
+            stt_output_base = os.path.join(config.stt_dir, f"{base_name_for_stt}_s")
+        else:
+            stt_output_base = os.path.join(config.stt_dir, f"stt_{base_name_for_stt}")
+            
         stt_json = f"{stt_output_base}.json"
         stt_path = f"{stt_output_base}.txt"
 

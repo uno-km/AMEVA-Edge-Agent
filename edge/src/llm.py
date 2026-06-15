@@ -109,10 +109,16 @@ class LLMEngine:
         total_chars = len(clean_transcription.strip())
         is_korean = (korean_chars / total_chars >= 0.15) if total_chars > 0 else True
 
-        filename = os.path.basename(stt_path)
-        base_name, _ = os.path.splitext(filename)
-        summary_path = os.path.join(config.summary_dir, f"summary_{base_name}_{job_id}.txt")
-        translation_path = os.path.join(config.summary_dir, f"translation_{base_name}_{job_id}.txt")
+        import uuid
+        if config.agent_mode == "prd":
+            uid = str(uuid.uuid4())
+            summary_path = os.path.join(config.summary_dir, f"{uid}_sum.txt")
+            translation_path = os.path.join(config.summary_dir, f"{uid}_trans.txt")
+        else:
+            filename = os.path.basename(stt_path)
+            base_name, _ = os.path.splitext(filename)
+            summary_path = os.path.join(config.summary_dir, f"summary_{base_name}_{job_id}.txt")
+            translation_path = os.path.join(config.summary_dir, f"translation_{base_name}_{job_id}.txt")
 
         # 추론 헬퍼 함수
         def run_inference(prompt_text):
