@@ -67,6 +67,10 @@ class SSHSyncManager:
             files_to_send.append(job['stt_path'])
         if job['summary_path'] and os.path.exists(job['summary_path']):
             files_to_send.append(job['summary_path'])
+            # 번역본 파일이 존재하면 전송 목록에 추가
+            trans_path = job['summary_path'].replace("summary_", "translation_")
+            if os.path.exists(trans_path):
+                files_to_send.append(trans_path)
             
         # 고대역폭(HIGH_BANDWIDTH)인 경우에만 오디오 파일 전송
         if network == "HIGH_BANDWIDTH":
@@ -118,6 +122,12 @@ class SSHSyncManager:
             for filepath in all_associated_files:
                 if filepath and os.path.exists(filepath):
                     shred_file(filepath, passes=config.shred_passes)
+            
+            # 번역본 파일도 명시적으로 삭제 확인
+            if job['summary_path']:
+                trans_path = job['summary_path'].replace("summary_", "translation_")
+                if os.path.exists(trans_path):
+                    shred_file(trans_path, passes=config.shred_passes)
 
             return True
         else:
@@ -189,8 +199,8 @@ class SSHSyncManager:
         ]
 
         try:
-            # 업로드 실행
-            scp_res = subprocess.run(scp_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, errors='replace', timeout=120)
+            # 업로드 실행 (stdin=subprocess.DEVNULL 적용)
+            scp_res = subprocess.run(scp_cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, errors='replace', timeout=120)
             if scp_res.returncode != 0:
                 print(f"[SSHSyncManager] scp 전송 실패: {scp_res.stderr}")
                 return False
@@ -207,7 +217,7 @@ class SSHSyncManager:
                 verify_cmd
             ]
 
-            ssh_res = subprocess.run(ssh_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, errors='replace', timeout=30)
+            ssh_res = subprocess.run(ssh_cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, errors='replace', timeout=30)
             if ssh_res.returncode == 0 and "OK" in ssh_res.stdout:
                 return True
             else:
@@ -247,7 +257,7 @@ class SSHSyncManager:
         ]
         
         try:
-            res = subprocess.run(test_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, errors='replace', timeout=10)
+            res = subprocess.run(test_cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, errors='replace', timeout=10)
             if res.returncode == 0 and "SSH_CONNECTION_OK" in res.stdout:
                 print(f"[SSHSyncManager] {config.ssh_host} 연결 및 인증에 성공했습니다!")
                 print(f" -> 원격지 응답: {res.stdout.strip()}")
@@ -263,7 +273,7 @@ class SSHSyncManager:
                     f"{config.ssh_user}@{config.ssh_host}",
                     f"powershell -Command \"if (!(Test-Path '{config.ssh_remote_path}')) {{ New-Item -ItemType Directory -Force -Path '{config.ssh_remote_path}' }}; New-Item -ItemType File -Force -Path '{config.ssh_remote_path}/.write_test' | Out-Null; Remove-Item -Force '{config.ssh_remote_path}/.write_test' | Out-Null; Write-Output 'WRITE_OK'\""
                 ]
-                res_write = subprocess.run(write_test_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, errors='replace', timeout=10)
+                res_write = subprocess.run(write_test_cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, errors='replace', timeout=10)
                 if res_write.returncode == 0 and "WRITE_OK" in res_write.stdout:
                     print("[SSHSyncManager] 원격 폴더 쓰기/삭제 권한 확인 완료. 모든 연동이 완벽합니다! 🎉")
                     return True

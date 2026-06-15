@@ -187,8 +187,8 @@ class STTEngine:
             output_path
         ])
         
-        # 프로세스 실행
-        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        # 프로세스 실행 (stdin=subprocess.DEVNULL로 대기 상태 방지)
+        result = subprocess.run(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         if result.returncode != 0:
             raise RuntimeError(f"ffmpeg 에러 코드 {result.returncode}. 에러 로그: {result.stderr}")
 
@@ -234,8 +234,8 @@ class STTEngine:
         if config.whisper_ko:
             cmd.extend(["-l", "ko"])
 
-        # whisper.cpp 명령어 실행 (실시간 로그 출력을 위해 파이프 대신 콘솔 상속)
-        result = subprocess.run(cmd, text=True)
+        # whisper.cpp 명령어 실행 (실시간 로그 출력을 위해 파이프 대신 콘솔 상속, stdin=subprocess.DEVNULL 적용)
+        result = subprocess.run(cmd, stdin=subprocess.DEVNULL, text=True)
         if result.returncode != 0:
             raise RuntimeError(f"whisper.cpp 에러 코드 {result.returncode}.")
 

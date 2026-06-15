@@ -101,34 +101,75 @@ class LLMEngine:
             self.db.update_status(job_id, 'STT_COMPLETED', error_message=error_msg)
             return False
 
-        # 2. 프롬프트 생성
-        prompt = (
-            "아래 제공되는 통화 음성 녹음에서 추출된 STT 텍스트를 핵심 내용 위주로 요약하고, 한국어로 번역해 주세요.\n"
-            "상세 정보나 중요한 언급은 누락하지 말고 가독성 좋게 정리해 주십시오.\n\n"
-            f"=== STT TEXT ===\n{transcription}\n\n"
-            "=== 한국어 요약 및 번역 결과 ==="
-        )
+        # 2. 언어 판별 (타임스탬프 제거 후 순수 대화 텍스트 기준 한글 비율 계산)
+        import re
+        clean_transcription = re.sub(r"\[\d{2}:\d{2}:\d{2}\.\d{3}\s*->\s*\d{2}:\d{2}:\d{2}\.\d{3}\]\s*", "", transcription)
+
+        korean_chars = sum(1 for char in clean_transcription if '\uac00' <= char <= '\ud7a3' or '\u3131' <= char <= '\u318e')
+        total_chars = len(clean_transcription.strip())
+        is_korean = (korean_chars / total_chars >= 0.15) if total_chars > 0 else True
 
         filename = os.path.basename(stt_path)
         base_name, _ = os.path.splitext(filename)
         summary_path = os.path.join(config.summary_dir, f"summary_{base_name}_{job_id}.txt")
+        translation_path = os.path.join(config.summary_dir, f"translation_{base_name}_{job_id}.txt")
 
-        try:
-            summary_content = ""
+        # 추론 헬퍼 함수
+        def run_inference(prompt_text):
             if is_mock:
-                summary_content = f"이것은 모의(Mock) LLM 요약 결과입니다. 오디오 ID: {job_id}"
+                return f"[MOCK RES] Prompt length: {len(prompt_text)}"
             elif use_ollama:
-                summary_content = self._run_ollama_inference(prompt)
+                return self._run_ollama_inference(prompt_text)
             else:
                 if config.llm_engine == "llama":
-                    summary_content = self._run_llama_cli(prompt)
+                    return self._run_llama_cli(prompt_text)
                 else:
-                    summary_content = self._run_bitnet_cpp(prompt)
+                    return self._run_bitnet_cpp(prompt_text)
+
+        try:
+            if is_korean:
+                print(f"[LLMEngine] [ID {job_id}] 한국어 우세 통화로 판정 (한글 비율: {korean_chars}/{total_chars}). 요약만 진행합니다.")
+                prompt = (
+                    "아래 제공되는 통화 음성 녹음에서 추출된 STT 텍스트를 핵심 내용 위주로 요약해 주세요.\n"
+                    "상세 정보나 중요한 언급은 누락하지 말고 가독성 좋게 정리해 주십시오.\n\n"
+                    f"=== STT TEXT ===\n{clean_transcription}\n\n"
+                    "=== 한국어 요약 결과 ==="
+                )
+                summary_content = run_inference(prompt)
+            else:
+                print(f"[LLMEngine] [ID {job_id}] 외국어(영어 등) 우세 통화로 판정 (한글 비율: {korean_chars}/{total_chars}). 번역 및 요약을 단계별로 진행합니다.")
+                
+                # 1단계: 번역
+                translate_prompt = (
+                    "Please translate the following transcript into natural Korean.\n"
+                    "Do not summarize or omit anything, just output the Korean translation.\n\n"
+                    f"=== TRANSCRIPT ===\n{clean_transcription}\n\n"
+                    "=== KOREAN TRANSLATION ==="
+                )
+                print(f"[LLMEngine] [ID {job_id}] 1단계: 번역 진행 중...")
+                translation_content = run_inference(translate_prompt)
+                
+                if not translation_content or not translation_content.strip():
+                    raise ValueError("번역 결과가 비어있습니다.")
+                
+                # 번역 결과 파일 저장
+                with open(translation_path, "w", encoding="utf-8") as f:
+                    f.write(translation_content)
+                print(f"[LLMEngine] [ID {job_id}] 번역 저장 완료 -> {translation_path}")
+
+                # 2단계: 번역본 요약
+                summary_prompt = (
+                    "아래 제공되는 번역된 통화 텍스트의 핵심 내용을 가독성 좋게 한국어로 요약해 주세요.\n\n"
+                    f"=== TEXT ===\n{translation_content}\n\n"
+                    "=== 한국어 요약 결과 ==="
+                )
+                print(f"[LLMEngine] [ID {job_id}] 2단계: 요약 진행 중...")
+                summary_content = run_inference(summary_prompt)
 
             if not summary_content or not summary_content.strip():
-                raise ValueError("LLM의 추론 결과가 비어있습니다.")
+                raise ValueError("LLM의 요약 결과가 비어있습니다.")
 
-            # 결과 파일로 저장
+            # 요약 결과 파일로 저장
             with open(summary_path, "w", encoding="utf-8") as f:
                 f.write(summary_content)
                 
@@ -142,11 +183,11 @@ class LLMEngine:
                 llm_ended_at=llm_ended_at,
                 llm_model=llm_model
             )
-            print(f"[LLMEngine] [ID {job_id}] 요약 성공 -> {summary_path}")
+            print(f"[LLMEngine] [ID {job_id}] 최종 처리 성공 -> {summary_path}")
             return True
             
         except Exception as e:
-            error_msg = f"LLM 추론 중 오류 발생: {e}"
+            error_msg = f"LLM 추론/처리 중 오류 발생: {e}"
             print(f"[LLMEngine] [ID {job_id}] {error_msg}")
             self.db.update_status(job_id, 'STT_COMPLETED', error_message=error_msg)
             return False
@@ -259,37 +300,63 @@ class LLMEngine:
             "-p", prompt
         ]
         
-        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8")
+        # stdin=subprocess.DEVNULL을 주어 대기 상태 방지
+        result = subprocess.run(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8")
         if result.returncode != 0:
             raise RuntimeError(f"bitnet.cpp 에러 코드 {result.returncode}. 에러 로그: {result.stderr}")
             
         return result.stdout
 
     def _run_llama_cli(self, prompt):
-        """llama-cli 바이너리를 실행하여 결과를 획득합니다."""
+        """llama-cli 또는 llama-completion 바이너리를 실행하여 결과를 획득합니다."""
         # 데스크톱 mock 테스팅 지원
         if config.llama_bin == "mock" or not os.path.exists(config.llama_bin):
             print(f"[LLMEngine] [MOCK] llama-cli 모의 처리 실행")
             return "이것은 llama-cli 로직에서 반환한 모의(Mock) 번역/요약 결과입니다."
 
+        # llama-cli 대신 동일 경로의 llama-completion 자동 탐색 및 전환
+        bin_path = config.llama_bin
+        is_completion_tool = False
+        if "llama-cli" in bin_path:
+            possible_completion = bin_path.replace("llama-cli", "llama-completion")
+            if os.path.exists(possible_completion):
+                bin_path = possible_completion
+                is_completion_tool = True
+                print(f"[LLMEngine] llama-cli 대신 안정적인 llama-completion 바이너리를 사용하여 작업을 진행합니다: {bin_path}")
+
         cmd = [
-            config.llama_bin,
+            bin_path,
             "-m", config.llama_model,
             "-p", prompt,
             "-t", str(config.llama_threads),
             "-n", "512",
             "--temp", "0.3",
             "--repeat-penalty", "1.1",
-            "--repeat-last-n", "64",
-            "-no-cnv"
+            "--repeat-last-n", "64"
         ]
-        
-        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8")
+
+        # llama-cli의 경우 대화 모드를 단판으로 강제 종료하기 위해 --single-turn 유지
+        if not is_completion_tool:
+            cmd.append("--single-turn")
+
+        # stdin=subprocess.DEVNULL을 주어 대기 상태 방지 및 stdout/stderr 캡처
+        result = subprocess.run(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8")
         if result.returncode != 0:
-            raise RuntimeError(f"llama-cli 에러 코드 {result.returncode}. 에러 로그: {result.stderr}")
+            raise RuntimeError(f"바이너리 에러 코드 {result.returncode}. 에러 로그: {result.stderr}")
             
-        # 프롬프트 에코가 포함되어 나오므로 생성 결과만 추출하기 위해 후처리 수행
         stdout = result.stdout
+        
+        # llama-completion 출력 구조 후처리 (user/assistant 태그 및 EOF 표시 제거)
+        if is_completion_tool:
+            if "assistant\n" in stdout:
+                stdout = stdout.split("assistant\n", 1)[1]
+            elif "assistant" in stdout:
+                stdout = stdout.split("assistant", 1)[1]
+            if "> EOF by" in stdout:
+                stdout = stdout.split("> EOF by", 1)[0]
+            return stdout.strip()
+
+        # 기존 llama-cli 출력 형식 대응 후처리
         if prompt in stdout:
             return stdout.split(prompt, 1)[1].strip()
         

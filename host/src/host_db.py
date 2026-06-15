@@ -76,14 +76,16 @@ class HostDBManager:
                         llm_started_at DATETIME,
                         llm_ended_at DATETIME,
                         stt_model TEXT,
-                        llm_model TEXT
+                        llm_model TEXT,
+                        sync_started_at DATETIME,
+                        sync_method TEXT
                     );
                 """)
                 
                 # 기존 DB 마이그레이션 (동적 컬럼 추가)
-                for col in ["stt_started_at", "stt_ended_at", "llm_started_at", "llm_ended_at", "stt_model", "llm_model"]:
+                for col in ["stt_started_at", "stt_ended_at", "llm_started_at", "llm_ended_at", "stt_model", "llm_model", "sync_started_at", "sync_method"]:
                     try:
-                        if col in ["stt_model", "llm_model"]:
+                        if col in ["stt_model", "llm_model", "sync_method"]:
                             cursor.execute(f"ALTER TABLE jobs ADD COLUMN {col} TEXT;")
                         else:
                             cursor.execute(f"ALTER TABLE jobs ADD COLUMN {col} DATETIME;")
@@ -95,7 +97,7 @@ class HostDBManager:
             raise e
         finally:
             conn.close()
-
+ 
     def merge_edge_db(self, conn_master, tmp_db_path):
         """
         임시 수신된 엣지 DB로부터 데이터를 읽어와서 Master DB에 Upsert합니다.
@@ -104,7 +106,7 @@ class HostDBManager:
         logger.info(f"임시 DB 병합 시작: {tmp_db_path}")
         if not os.path.exists(tmp_db_path):
             raise FileNotFoundError(f"임시 DB 파일이 존재하지 않습니다: {tmp_db_path}")
-
+ 
         conn_tmp = self.get_connection(tmp_db_path)
         conn_tmp.row_factory = sqlite3.Row
         try:
@@ -112,7 +114,7 @@ class HostDBManager:
             cursor_tmp.execute("SELECT * FROM jobs")
             tmp_jobs = [dict(row) for row in cursor_tmp.fetchall()]
             logger.info(f"임시 DB로부터 {len(tmp_jobs)}개의 작업을 가져왔습니다.")
-
+ 
             cursor_master = conn_master.cursor()
             merged_count = 0
             for job in tmp_jobs:
@@ -122,9 +124,9 @@ class HostDBManager:
                         original_audio_path, wav_path, stt_path, summary_path,
                         status, sync_status, created_at, processed_at, sync_at, error_message,
                         stt_started_at, stt_ended_at, llm_started_at, llm_ended_at,
-                        stt_model, llm_model
+                        stt_model, llm_model, sync_started_at, sync_method
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(original_audio_path) DO UPDATE SET
                         wav_path=excluded.wav_path,
                         stt_path=excluded.stt_path,
@@ -139,7 +141,9 @@ class HostDBManager:
                         llm_started_at=excluded.llm_started_at,
                         llm_ended_at=excluded.llm_ended_at,
                         stt_model=excluded.stt_model,
-                        llm_model=excluded.llm_model
+                        llm_model=excluded.llm_model,
+                        sync_started_at=excluded.sync_started_at,
+                        sync_method=excluded.sync_method
                 """, (
                     job.get('original_audio_path'),
                     job.get('wav_path'),
@@ -156,7 +160,9 @@ class HostDBManager:
                     job.get('llm_started_at'),
                     job.get('llm_ended_at'),
                     job.get('stt_model'),
-                    job.get('llm_model')
+                    job.get('llm_model'),
+                    job.get('sync_started_at'),
+                    job.get('sync_method')
                 ))
                 merged_count += 1
             
