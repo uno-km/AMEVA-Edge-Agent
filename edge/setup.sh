@@ -292,16 +292,42 @@ if command -v ollama >/dev/null 2>&1; then
     echo -e "설치 가능한 권장 모델 체급:"
     echo -e "  1) qwen2.5:0.5b (약 350MB, 초경량, 모바일 강추, 튕김 없음)"
     echo -e "  2) llama3.2:3b  (약 2.0GB, 높은 퀄리티, 충분한 메모리 필요)"
-    read -p "풀(Pull)할 LLM 모델 번호를 선택하세요 (1-2, 기본값 1): " llm_choice
+    read -p "풀(Pull)할 LLM 모델 번호를 선택하세요 (1-2, 기본값 1, 예: 1,2 또는 12): " llm_choice
     
-    SELECTED_LLM="qwen2.5:0.5b"
-    if [ "$llm_choice" = "2" ]; then
-        SELECTED_LLM="llama3.2:3b"
+    if [ -z "$llm_choice" ]; then
+        llm_choice="1"
     fi
-    OLLAMA_SELECTED_MODEL="$SELECTED_LLM"
     
-    echo -e "[모델] ${SELECTED_LLM} 모델을 원격 저장소에서 풀(pull)합니다..."
-    ollama pull "$SELECTED_LLM"
+    if [[ "$llm_choice" == *"1-2"* ]]; then
+        llm_choice="${llm_choice/1-2/12}"
+    fi
+    
+    WANT_QWEN=false
+    WANT_LLAMA=false
+    
+    if [[ "$llm_choice" =~ "1" ]]; then WANT_QWEN=true; fi
+    if [[ "$llm_choice" =~ "2" ]]; then WANT_LLAMA=true; fi
+    
+    if [ "$WANT_QWEN" = false ] && [ "$WANT_LLAMA" = false ]; then
+        WANT_QWEN=true
+    fi
+    
+    # .env에 기본 등록할 대표 모델명 지정 (Qwen 우선)
+    OLLAMA_SELECTED_MODEL="qwen2.5:0.5b"
+    if [ "$WANT_QWEN" = true ]; then
+        OLLAMA_SELECTED_MODEL="qwen2.5:0.5b"
+    elif [ "$WANT_LLAMA" = true ]; then
+        OLLAMA_SELECTED_MODEL="llama3.2:3b"
+    fi
+    
+    if [ "$WANT_QWEN" = true ]; then
+        echo -e "[모델] qwen2.5:0.5b 모델을 원격 저장소에서 풀(pull)합니다..."
+        ollama pull "qwen2.5:0.5b"
+    fi
+    if [ "$WANT_LLAMA" = true ]; then
+        echo -e "[모델] llama3.2:3b 모델을 원격 저장소에서 풀(pull)합니다..."
+        ollama pull "llama3.2:3b"
+    fi
 else
     echo -e "[설치] Ollama가 설치되어 있지 않습니다."
     read -p "Ollama를 설치하시겠습니까? (y/n): " install_ollama
