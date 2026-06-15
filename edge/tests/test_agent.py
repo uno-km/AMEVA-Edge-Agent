@@ -33,6 +33,7 @@ class TestEdgeAgentPipeline(unittest.TestCase):
         # 바이너리 및 서버를 Mock 모드로 강제 지정
         config.whisper_bin = "mock"
         config.bitnet_bin = "mock"
+        config.llama_bin = "mock"
         config.ssh_host = "mock"
         config.shred_passes = 1  # 테스트 속도를 위해 소거 패스는 1회로 단축
         

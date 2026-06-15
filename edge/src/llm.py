@@ -27,7 +27,7 @@ class LLMEngine:
         success_count = 0
         
         # 모의(Mock) 모드 여부
-        is_mock = (config.bitnet_bin == "mock" or config.ollama_bin == "mock")
+        is_mock = (config.bitnet_bin == "mock" or config.llama_bin == "mock" or config.ollama_bin == "mock")
         
         # Ollama 기동 여부 플래그 (Ollama를 이 배치 구동을 위해 직접 켰는지 추적)
         started_ollama_here = False
@@ -35,8 +35,13 @@ class LLMEngine:
         try:
             use_ollama = False
             if not is_mock:
-                # 먼저 bitnet.cpp 사용이 불가능한지 검사하고 Ollama를 써야 하는 상황인지 진단
-                use_ollama = not os.path.exists(config.bitnet_bin)
+                # 선택된 엔진의 바이너리가 존재하지 않는 경우 Ollama 폴백 진단
+                if config.llm_engine == "llama":
+                    use_ollama = not os.path.exists(config.llama_bin)
+                elif config.llm_engine == "bitnet":
+                    use_ollama = not os.path.exists(config.bitnet_bin)
+                else:
+                    use_ollama = True
                 
                 if use_ollama:
                     # Ollama 서버가 이미 켜져있는지 소켓 연결로 체크
@@ -111,7 +116,10 @@ class LLMEngine:
             elif use_ollama:
                 summary_content = self._run_ollama_inference(prompt)
             else:
-                summary_content = self._run_bitnet_cpp(prompt)
+                if config.llm_engine == "llama":
+                    summary_content = self._run_llama_cli(prompt)
+                else:
+                    summary_content = self._run_bitnet_cpp(prompt)
 
             if not summary_content or not summary_content.strip():
                 raise ValueError("LLM의 추론 결과가 비어있습니다.")
@@ -248,4 +256,35 @@ class LLMEngine:
             raise RuntimeError(f"bitnet.cpp 에러 코드 {result.returncode}. 에러 로그: {result.stderr}")
             
         return result.stdout
+
+    def _run_llama_cli(self, prompt):
+        """llama-cli 바이너리를 실행하여 결과를 획득합니다."""
+        # 데스크톱 mock 테스팅 지원
+        if config.llama_bin == "mock" or not os.path.exists(config.llama_bin):
+            print(f"[LLMEngine] [MOCK] llama-cli 모의 처리 실행")
+            return "이것은 llama-cli 로직에서 반환한 모의(Mock) 번역/요약 결과입니다."
+
+        cmd = [
+            config.llama_bin,
+            "-m", config.llama_model,
+            "-p", prompt,
+            "-t", str(config.llama_threads),
+            "-n", "512",
+            "--temp", "0.3"
+        ]
+        
+        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8")
+        if result.returncode != 0:
+            raise RuntimeError(f"llama-cli 에러 코드 {result.returncode}. 에러 로그: {result.stderr}")
+            
+        # 프롬프트 에코가 포함되어 나오므로 생성 결과만 추출하기 위해 후처리 수행
+        stdout = result.stdout
+        if prompt in stdout:
+            return stdout.split(prompt, 1)[1].strip()
+        
+        prompt_indicator = "=== 한국어 요약 및 번역 결과 ==="
+        if prompt_indicator in stdout:
+            return stdout.split(prompt_indicator, 1)[1].strip()
+            
+        return stdout.strip()
 

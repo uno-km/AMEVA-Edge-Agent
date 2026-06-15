@@ -26,10 +26,20 @@ class Config:
         # 1. whisper.cpp 설정
         self.whisper_bin = self._get_env_path("WHISPER_BIN", os.path.join("~", "dev", "whisper.cpp", "main"))
         self.whisper_model = self._get_env_path("WHISPER_MODEL", os.path.join("~", "dev", "whisper.cpp", "models", "ggml-small.bin"))
+        self.whisper_max_len = int(os.environ.get("WHISPER_MAX_LEN", 20))
+        self.whisper_ko = os.environ.get("WHISPER_KO", "True").lower() == "true"
         
-        # 2. bitnet.cpp 설정
+        # 2. LLM 실행 엔진 선택 및 설정 (bitnet, llama, ollama)
+        self.llm_engine = os.environ.get("LLM_ENGINE", "bitnet").lower()  # bitnet / llama / ollama
+        
+        # 2a. bitnet.cpp 설정
         self.bitnet_bin = self._get_env_path("BITNET_BIN", os.path.join("~", "dev", "bitnet.cpp", "main"))
         self.bitnet_model = self._get_env_path("BITNET_MODEL", os.path.join("~", "dev", "bitnet.cpp", "models", "Llama3-8B-1.58b", "ggml-model-i2_s.gguf"))
+        
+        # 2b. llama.cpp 설정
+        self.llama_bin = self._get_env_path("LLAMA_BIN", os.path.join("~", ".shitty_phone_ai", "llama.cpp", "build", "bin", "llama-cli"))
+        self.llama_model = self._get_env_path("LLAMA_MODEL", os.path.join("~", ".shitty_phone_ai", "models", "Llama-3.2-3B-Instruct-Q4_K_M.gguf"))
+        self.llama_threads = int(os.environ.get("LLAMA_THREADS", 4))
         
         # 3. Ollama (워크어라운드) 설정
         self.ollama_bin = os.environ.get("OLLAMA_BIN", "ollama")

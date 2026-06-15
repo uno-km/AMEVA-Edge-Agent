@@ -77,7 +77,9 @@ echo -e "[동기화] 개발 소스 파일을 고정 폴더로 복사합니다...
 cp -r src/* "${AGENT_DIR}/src/"
 cp main_edge.py "${AGENT_DIR}/"
 cp run.sh "${AGENT_DIR}/"
+cp run_daemon.sh "${AGENT_DIR}/"
 chmod +x "${AGENT_DIR}/run.sh"
+chmod +x "${AGENT_DIR}/run_daemon.sh"
 
 # .env 설정 파일 동기화 (.env 가 고정 폴더 내부에 없으면 생성하고, 이미 있다면 덮어쓰지 않음)
 if [ ! -f "${AGENT_DIR}/.env" ]; then
@@ -140,7 +142,40 @@ BITNET_MAIN="${HOME}/dev/bitnet.cpp/main"
 if [ -f "$BITNET_MAIN" ]; then
     echo -e "[스캔] ${GREEN}bitnet.cpp 빌드 상태 확인 완료.${NC}"
 else
-    echo -e "${YELLOW}[안내] bitnet.cpp 바이너리가 없습니다. bitnet.cpp 사용이 불가할 시 자동으로 Ollama를 활용한 워크어라운드 모드로 작동합니다.${NC}"
+    echo -e "${YELLOW}[안내] bitnet.cpp 바이너리가 발견되지 않았습니다. (필요 시 수동 설치)${NC}"
+fi
+
+# 7b. llama.cpp 빌드 상태 스캔
+LLAMA_MAIN="${HOME}/.shitty_phone_ai/llama.cpp/build/bin/llama-cli"
+if [ -f "$LLAMA_MAIN" ]; then
+    echo -e "[스캔] ${GREEN}llama.cpp (llama-cli) 빌드 상태 확인 완료.${NC}"
+else
+    echo -e "${YELLOW}[안내] llama.cpp (llama-cli) 바이너리가 발견되지 않았습니다."
+    read -p "llama.cpp를 자동 다운로드하고 Galaxy A35 최적화(ARM NEON/DOTPROD) 옵션으로 빌드하시겠습니까? (y/n): " build_llama
+    if [ "$build_llama" = "y" ] || [ "$build_llama" = "Y" ]; then
+        echo -e "[설치] llama.cpp 리포지토리를 클론합니다..."
+        mkdir -p "${HOME}/.shitty_phone_ai"
+        if [ ! -d "${HOME}/.shitty_phone_ai/llama.cpp" ]; then
+            git clone https://github.com/ggerganov/llama.cpp.git "${HOME}/.shitty_phone_ai/llama.cpp"
+        fi
+        cd "${HOME}/.shitty_phone_ai/llama.cpp"
+        echo -e "[빌드] llama.cpp 컴파일 진행 중 (최적화 플래그 적용)..."
+        # cmake 빌드 구성 또는 make 네이티브 빌드 시도
+        if command -v cmake >/dev/null 2>&1; then
+            mkdir -p build && cd build
+            cmake -DGGML_NATIVE=ON -DGGML_ARM_NEON=ON -DGGML_ARM_DOTPROD=ON -DGGML_ARM_FMA=ON ..
+            make -j$(nproc)
+            cd ..
+        else
+            make -j$(nproc) GGML_NATIVE=1 GGML_ARM_NEON=1 GGML_ARM_DOTPROD=1
+        fi
+        cd -
+        if [ -f "$LLAMA_MAIN" ]; then
+            echo -e "[완료] ${GREEN}llama.cpp 빌드가 성공적으로 완료되었습니다!${NC}"
+        else
+            echo -e "${RED}[경고] llama.cpp 빌드가 실패하였습니다. 수동 빌드를 진행해 주십시오.${NC}"
+        fi
+    fi
 fi
 
 # 8. Ollama 워크어라운드 환경 검증
@@ -171,7 +206,8 @@ echo -e "      ${YELLOW}${AGENT_DIR}/run.sh stt${NC} (STT 변환 진행)"
 echo -e "      ${YELLOW}${AGENT_DIR}/run.sh llm${NC} (LLM 요약 및 Ollama 가동/소멸)"
 echo -e "      ${YELLOW}${AGENT_DIR}/run.sh sync-files${NC} (21시 파일 원격 동기화 및 완전 삭제)"
 echo -e "      ${YELLOW}${AGENT_DIR}/run.sh sync-db${NC} (23시 DB 마이그레이션 및 완전 삭제)"
-echo -e "  - 백그라운드 모니터 데몬: ${YELLOW}${AGENT_DIR}/run.sh daemon${NC}"
+echo -e "  - 백그라운드 모니터 데몬: ${YELLOW}${AGENT_DIR}/run.sh daemon${NC}
+  - 영속적 감시 데몬 (자동 재실행): ${YELLOW}${AGENT_DIR}/run_daemon.sh${NC}"
 echo -e ""
 echo -e "정기 배치 작업을 크론탭(crontab -e)에 등록하려면 아래 템플릿을 추가하십시오:"
 echo -e "  ${YELLOW}0 21 * * * ${AGENT_DIR}/run.sh sync-files >> ${AGENT_DIR}/sync-files.log 2>&1${NC}"

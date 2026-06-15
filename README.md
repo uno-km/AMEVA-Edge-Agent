@@ -7,12 +7,13 @@
 >   * 극도로 보안이 강조되는 기기(모바일 Termux 등)에서 정보 유출을 차단하며 오디오·STT·요약 결과를 안전하게 전송하고 잔여 흔적을 소거하는 라이프사이클 지향
 >   * 엣지용 `AudioScanner`·`STTEngine`·`SSHSyncManager` 스케줄러와 호스트 측 `HostDBManager`·`watchdog` 데몬 간의 비동기 마이그레이션 협업 구현
 >   * 모바일 기기의 불안정한 외부 패키지 설치와 네트워크 가용 한계, 그리고 삭제된 파일의 포렌식 복구 위협을 방지하기 위한 보안 소거 및 경량 아키텍처 구현
+>   * **GGUF 1.58비트 양자화 모델(BitNet.cpp)의 ARM64 컴파일 호환성 및 추론 붕괴(Word Salad) 현상 역공학을 통한 C++ 가속 커널 직접 수정 및 PR**
 > * **③ 내용요지:**
->   * **사용 기술:** `Python 3` (표준 라이브러리 100% 준수 - 엣지용), `watchdog`, `reportlab`, `requests`, `sqlite3`, `subprocess`
->   * **사용 모델:** `Whisper.cpp (Small)` (STT), `Llama-3 (8B, BitNet 1.58b)`, `Llama-3.2 (3B)` (LLM)
->   * **핵심 알고리즘:** 디렉토리 실시간 감시를 위한 `watchdog` 기반 인입 감지, 파일 유출을 방지하는 `shred_file` 및 `shred_database` 포렌식 완전 소거 알고리즘, 트랜잭션 안전성 확보를 위한 마스터 DB 병합(`merge_edge_db`), 1:1:1 물리 파일 교차 검증 (`validate_sync_integrity`), 핑 기반 네트워크 대역폭 체크 (`check_network_condition`)
->   * **에이전트/보안 제어 (또는 핵심 아키텍처 흐름):** 엣지에서 미디어 파일 스캔 및 sqlite 데이터 적재 -> STT/LLM 요약 완료 대기 -> 21시 배치 기동 -> 네트워크 대역폭 판별 -> SCP 파일 업로드 및 ssh 원격 크기 검증 -> 검증 성공 시 `shred_file`로 로컬 파일 복구 불가능 소거 -> 23시 배치 기동 -> 마이그레이션용 복제 DB 전송 -> 호스트 watchdog 감지 -> Master DB 트랜잭션 개시 후 병합 및 1:1:1 파일 교차 검증 -> 호스트가 성공 시그널 반환 시 엣지 원본 DB 완전 삭제 흐름
->   * **연구 성과:** 엣지 에이전트의 종속성을 파이썬 표준 라이브러리만으로 100% 구축하여 가용 환경을 극대화하고, 데이터 전송 직후 로컬 파일 데이터에 포렌식 소거를 집행하여 단 1바이트의 기밀 유출 가능성도 원천 차단
+>   * **사용 기술:** `Python 3` (표준 라이브러리 100% 준수 - 엣지용), `C++ (MSVC / Clang 21)`, `CMake`, `Ninja`, `ARM Neon SIMD / DotProd assembly`, `watchdog`, `reportlab`, `requests`, `sqlite3`, `subprocess`
+>   * **사용 모델:** `Whisper.cpp (Small)` (STT), `BitNet-b1.58-2B-4T (GGUF, i2_s)` (LLM), `Llama-3.2 (3B)` (Ollama Fallback)
+>   * **핵심 알고리즘:** 디렉토리 실시간 감시를 위한 `watchdog` 기반 인입 감지, 파일 유출을 방지하는 `shred_file` 및 `shred_database` 포렌식 완전 소거 알고리즘, 트랜잭션 안전성 확보를 위한 마스터 DB 병합(`merge_edge_db`), 1:1:1 물리 파일 교차 검증 (`validate_sync_integrity`), **x86 AVX2 메모리 인터리빙 레이아웃 오프셋을 역공학하여 ARM64 QK=128 규격으로 재정렬한 1x1, 1xN, Nx1 C++ NEON 벡터 커널 최적화 알고리즘**
+>   * **에이전트/보안 제어 (또는 핵심 아키텍처 흐름):** 엣지에서 미디어 파일 스캔 및 sqlite 데이터 적재 -> STT/LLM 요약 완료 대기 -> 21시 배치 기동 -> 네트워크 대역폭 판별 -> SCP 파일 업로드 및 ssh 원격 크기 검증 -> 검증 성공 시 `shred_file`로 로컬 파일 복구 불가능 소거 -> 23시 배치 기동 -> 마이그레이션용 복제 DB 전송 -> 호스트 watchdog 감지 -> Master DB 트랜잭션 개시 후 병합 및 1:1:1 파일 교차 검증 -> 호스트가 성공 시그널 반환 시 엣지 원본 DB 완전 삭제 흐름. 안드로이드 터미널(Termux/PRoot)에서 Clang 21 const 파라미터 경고 및 steady_clock 패치를 자동화하고, GGUF 양자화 파일의 MSB->LSB 2비트 언패킹과 비트 시프트 순서를 동기화하여 Exynos 1380의 8스레드 풀 가속을 이끌어내어 초당 3.01토큰 추론 속도를 달성하는 흐름.
+>   * **연구 성과:** 엣지 에이전트의 종속성을 파이썬 표준 라이브러리만으로 100% 구축하여 가용 환경을 극대화하였으며, **오픈소스 BitNet.cpp의 x86 AVX2 의존성을 극복하고 모바일 Exynos 1380(Galaxy A35) 환경에서 1.58비트 양자화 추론 정상 구동에 성공하여 깃허브 공식 PR 제출 및 3.01 tokens/sec 속도 실증**
 > * **④ 기여도:** 단독 개발 (100% - 아키텍처 설계, 보안 시스템 구축, 코어 로직 구현 전담)
 
 # AMEVA Edge Agent
