@@ -277,6 +277,8 @@ class LLMEngine:
             "-t", str(config.llama_threads),
             "-n", "512",
             "--temp", "0.3",
+            "--repeat-penalty", "1.1",
+            "--repeat-last-n", "64",
             "-no-cnv"
         ]
         
