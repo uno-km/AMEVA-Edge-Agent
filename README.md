@@ -72,6 +72,21 @@ graph TD
 5. 데이터베이스 원격 전송 및 완전 소거
 6. 자동화 모니터링 기능 가동
 
+### 원격 서버 동기화를 위한 SSH Key 설정 가이드 (자동 전송 필수)
+배치 프로그램이 백그라운드에서 비밀번호 입력 없이 안전하게 자동 전송(SCP/SSH)을 수행하려면, **엣지(Termux) 기기의 SSH 공개키**를 **수신 호스트(Windows/Linux 서버 등)**에 등록해야 합니다.
+
+1. **Termux에서 SSH 키셋 생성 및 공개키 확인:**
+   ```bash
+   # 키셋 자동 생성 (질문이 나오면 엔터를 눌러 넘어가면 됩니다)
+   ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N ""
+   
+   # 공개키 내용 출력 및 복사
+   cat ~/.ssh/id_rsa.pub
+   ```
+2. **수신 호스트(Windows PC/서버)에 공개키 추가:**
+   - Windows의 경우 `C:\Users\<계정명>\.ssh\authorized_keys` 파일을 엽니다. (Linux의 경우 `~/.ssh/authorized_keys`)
+   - 복사한 폰의 공개키(`ssh-rsa ...`)를 해당 파일 하단에 새 줄로 붙여넣고 저장합니다.
+
 ## 9. 연락처 (Contact)
 
 저는 Multi-Agent Systems, Edge Computing, 그리고 AI SRE 분야에 대한 학술적 담론을 언제나 환영합니다.
