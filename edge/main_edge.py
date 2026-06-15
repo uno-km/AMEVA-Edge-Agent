@@ -25,9 +25,10 @@ def show_menu():
     print("6. 배치 모니터링 백그라운드 데몬 가동 (daemon)")
     print("7. 도움말 및 종합 매뉴얼 확인 (help)")
     print("8. 원격 노트북 SSH/SCP 연동 테스트 (test-ssh)")
+    print("9. 원격 노트북에 SSH 키 등록 (register-key)")
     print("q. 프로그램 종료 (exit)")
     print("=========================================")
-    choice = input("원하는 작업 번호를 선택하십시오 (1-8 또는 q): ").strip().lower()
+    choice = input("원하는 작업 번호를 선택하십시오 (1-9 또는 q): ").strip().lower()
     return choice
 
 def run_interactive():
@@ -65,6 +66,9 @@ def run_interactive():
         elif choice in ('8', 'test-ssh'):
             print("\n>>> 원격 노트북 SSH/SCP 연동 테스트 실행...")
             SSHSyncManager().test_ssh_connection()
+        elif choice in ('9', 'register-key'):
+            print("\n>>> 원격 노트북 SSH 키 등록 실행...")
+            SSHSyncManager().register_key_on_host()
         elif choice in ('q', 'exit', 'quit'):
             print("프로그램을 종료합니다.")
             break
@@ -102,9 +106,11 @@ def main():
         print_help()
     elif arg == "test-ssh":
         SSHSyncManager().test_ssh_connection()
+    elif arg == "register-key":
+        SSHSyncManager().register_key_on_host()
     else:
         print(f"알 수 없는 매개변수: {sys.argv[1]}")
-        print("사용 가능한 옵션: scan, stt, llm, sync-files, sync-db, daemon, help, test-ssh")
+        print("사용 가능한 옵션: scan, stt, llm, sync-files, sync-db, daemon, help, test-ssh, register-key")
         sys.exit(1)
 
 if __name__ == "__main__":

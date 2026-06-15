@@ -190,7 +190,7 @@ class SSHSyncManager:
 
         try:
             # 업로드 실행
-            scp_res = subprocess.run(scp_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=120)
+            scp_res = subprocess.run(scp_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, errors='replace', timeout=120)
             if scp_res.returncode != 0:
                 print(f"[SSHSyncManager] scp 전송 실패: {scp_res.stderr}")
                 return False
@@ -207,7 +207,7 @@ class SSHSyncManager:
                 verify_cmd
             ]
 
-            ssh_res = subprocess.run(ssh_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=30)
+            ssh_res = subprocess.run(ssh_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, errors='replace', timeout=30)
             if ssh_res.returncode == 0 and "OK" in ssh_res.stdout:
                 return True
             else:
@@ -247,7 +247,7 @@ class SSHSyncManager:
         ]
         
         try:
-            res = subprocess.run(test_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=10)
+            res = subprocess.run(test_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, errors='replace', timeout=10)
             if res.returncode == 0 and "SSH_CONNECTION_OK" in res.stdout:
                 print(f"[SSHSyncManager] {config.ssh_host} 연결 및 인증에 성공했습니다!")
                 print(f" -> 원격지 응답: {res.stdout.strip()}")
@@ -261,9 +261,9 @@ class SSHSyncManager:
                     "-o", "StrictHostKeyChecking=no",
                     "-o", "ConnectTimeout=5",
                     f"{config.ssh_user}@{config.ssh_host}",
-                    f"mkdir -p '{config.ssh_remote_path}' && touch '{config.ssh_remote_path}/.write_test' && rm '{config.ssh_remote_path}/.write_test' && echo 'WRITE_OK'"
+                    f"powershell -Command \"if (!(Test-Path '{config.ssh_remote_path}')) {{ New-Item -ItemType Directory -Force -Path '{config.ssh_remote_path}' }}; New-Item -ItemType File -Force -Path '{config.ssh_remote_path}/.write_test' | Out-Null; Remove-Item -Force '{config.ssh_remote_path}/.write_test' | Out-Null; Write-Output 'WRITE_OK'\""
                 ]
-                res_write = subprocess.run(write_test_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=10)
+                res_write = subprocess.run(write_test_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, errors='replace', timeout=10)
                 if res_write.returncode == 0 and "WRITE_OK" in res_write.stdout:
                     print("[SSHSyncManager] 원격 폴더 쓰기/삭제 권한 확인 완료. 모든 연동이 완벽합니다! 🎉")
                     return True
@@ -279,3 +279,55 @@ class SSHSyncManager:
         except Exception as e:
             print(f"[SSHSyncManager] [오류] 연동 테스트 중 오류 발생: {e}")
             return False
+
+    def register_key_on_host(self):
+        """윈도우 호스트(PC)에 에이전트의 SSH 공개키(id_rsa.pub)를 자동으로 등록합니다."""
+        print(f"\n[SSHSyncManager] 원격 호스트({config.ssh_host}:{config.ssh_port})에 SSH 공개키 등록을 시작합니다...")
+        
+        # 1. SSH 키가 있는지 확인, 없으면 생성
+        pub_key_path = os.path.expanduser("~/.ssh/id_rsa.pub")
+        if not os.path.exists(pub_key_path):
+            print("[SSHSyncManager] SSH 공개키가 발견되지 않았습니다. 새로운 키셋을 생성합니다...")
+            os.makedirs(os.path.expanduser("~/.ssh"), exist_ok=True)
+            subprocess.run(["ssh-keygen", "-t", "rsa", "-b", "4096", "-f", os.path.expanduser("~/.ssh/id_rsa"), "-N", ""], stdout=subprocess.DEVNULL)
+            
+        if not os.path.exists(pub_key_path):
+            print("[SSHSyncManager] [오류] SSH 공개키 생성에 실패했습니다.")
+            return False
+            
+        with open(pub_key_path, "r") as f:
+            pub_key = f.read().strip()
+            
+        print(f"\n[안내] 이 단계는 일회성으로 원격 PC({config.ssh_user}@{config.ssh_host})의 로그인 비밀번호가 필요합니다.")
+        
+        # Windows 호스트에 authorized_keys 생성 및 키 추가를 수행하는 powershell 명령
+        remote_cmd = (
+            "powershell -Command "
+            "\"if (!(Test-Path C:\\Users\\$env:USERNAME\\.ssh)) { "
+            "New-Item -ItemType Directory -Force -Path C:\\Users\\$env:USERNAME\\.ssh | Out-Null }; "
+            f"Add-Content -Path C:\\Users\\$env:USERNAME\\.ssh\\authorized_keys -Value '{pub_key}'; "
+            "Write-Output 'KEY_REGISTERED_OK'\""
+        )
+        
+        ssh_cmd = [
+            "ssh",
+            "-p", str(config.ssh_port),
+            "-o", "StrictHostKeyChecking=no",
+            f"{config.ssh_user}@{config.ssh_host}",
+            remote_cmd
+        ]
+        
+        try:
+            print("[SSHSyncManager] PC 비밀번호를 입력하라는 메시지가 나오면 PC 로그인 비밀번호를 입력해 주세요.")
+            res = subprocess.run(ssh_cmd, input=None, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, errors='replace')
+            if res.returncode == 0 and "KEY_REGISTERED_OK" in res.stdout:
+                print("\n[SSHSyncManager] 성공: 원격 PC에 SSH 공개키가 등록되었습니다! 🎉")
+                print("이제 비밀번호 없이도 자동 파일 전송이 가능합니다.")
+                return True
+            else:
+                print(f"\n[SSHSyncManager] [실패] SSH 공개키 등록 중 실패: {res.stderr.strip() or res.stdout.strip()}")
+                return False
+        except Exception as e:
+            print(f"\n[SSHSyncManager] [오류] SSH 공개키 등록 중 에러 발생: {e}")
+            return False
+

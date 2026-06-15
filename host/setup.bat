@@ -42,17 +42,25 @@ python -c "import sqlite3; conn=sqlite3.connect('data/all_agent_master.db'); cur
 
 rem 4. Install & Configure OpenSSH Server
 echo [SSH] Checking OpenSSH Server installation...
-powershell -Command "Get-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0" | findstr "Installed" >nul
+sc query sshd >nul 2>&1
 if %errorLevel% neq 0 (
-    echo [SSH] Installing OpenSSH Server...
-    powershell -Command "Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0"
+    echo [SSH] OpenSSH Server is not installed. Installing via Portable Win32-OpenSSH...
+    powershell -Command "Invoke-WebRequest -Uri 'https://github.com/PowerShell/Win32-OpenSSH/releases/download/v9.5.0.0p1-Beta/OpenSSH-Win64.zip' -OutFile '$env:TEMP\OpenSSH-Win64.zip'"
+    powershell -Command "Expand-Archive -Path '$env:TEMP\OpenSSH-Win64.zip' -DestinationPath 'C:\Program Files' -Force"
+    cd /d "C:\Program Files\OpenSSH-Win64"
+    powershell -ExecutionPolicy Bypass -File .\install-sshd.ps1
+    cd /d "%~dp0"
 ) else (
     echo [SSH] OpenSSH Server is already installed.
 )
 
+echo [SSH] Configuring sshd_config for key authentication bypass for administrators...
+powershell -Command "if (Test-Path 'C:\ProgramData\ssh\sshd_config') { (Get-Content -Path 'C:\ProgramData\ssh\sshd_config') -replace 'Match Group administrators', '#Match Group administrators' -replace 'AuthorizedKeysFile __PROGRAMDATA__/ssh/administrators_authorized_keys', '#       AuthorizedKeysFile __PROGRAMDATA__/ssh/administrators_authorized_keys' | Set-Content -Path 'C:\ProgramData\ssh\sshd_config' }"
+
 echo [SSH] Starting SSH service and setting startup to Automatic...
 powershell -Command "Start-Service sshd"
 powershell -Command "Set-Service -Name sshd -StartupType 'Automatic'"
+powershell -Command "Restart-Service sshd"
 
 echo [SSH] Ensuring Firewall rule is configured...
 powershell -Command "if (!(Get-NetFirewallRule -Name 'OpenSSH-Server-In-TCP' -ErrorAction SilentlyContinue)) { New-NetFirewallRule -Name 'OpenSSH-Server-In-TCP' -DisplayName 'OpenSSH Server (sshd)' -Enabled True -Direction Inbound -Protocol TCP -LocalPort 22 -Action Allow }"
