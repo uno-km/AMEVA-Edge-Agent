@@ -23,9 +23,10 @@ def show_menu():
     print("4. 21시 배치: 파일 원격 전송 및 완전 소거 (sync-files)")
     print("5. 23시 배치: DB 원격 전송 및 완전 소거 (sync-db)")
     print("6. 배치 모니터링 백그라운드 데몬 가동 (daemon)")
+    print("7. 도움말 및 종합 매뉴얼 확인 (help)")
     print("q. 프로그램 종료 (exit)")
     print("=========================================")
-    choice = input("원하는 작업 번호를 선택하십시오 (1-6 또는 q): ").strip().lower()
+    choice = input("원하는 작업 번호를 선택하십시오 (1-7 또는 q): ").strip().lower()
     return choice
 
 def run_interactive():
@@ -57,6 +58,9 @@ def run_interactive():
             confirm = input("백그라운드 모니터링 데몬을 실행하시겠습니까? (y/n): ").strip().lower()
             if confirm == 'y':
                 EdgeScheduler().run_daemon()
+        elif choice in ('7', 'help'):
+            from help import print_help
+            print_help()
         elif choice in ('q', 'exit', 'quit'):
             print("프로그램을 종료합니다.")
             break
@@ -89,9 +93,12 @@ def main():
         SSHSyncManager().sync_database_batch()
     elif arg == "daemon":
         EdgeScheduler().run_daemon()
+    elif arg == "help":
+        from help import print_help
+        print_help()
     else:
         print(f"알 수 없는 매개변수: {sys.argv[1]}")
-        print("사용 가능한 옵션: scan, stt, llm, sync-files, sync-db, daemon")
+        print("사용 가능한 옵션: scan, stt, llm, sync-files, sync-db, daemon, help")
         sys.exit(1)
 
 if __name__ == "__main__":
