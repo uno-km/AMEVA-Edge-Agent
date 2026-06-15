@@ -270,7 +270,8 @@ class LLMEngine:
             "-p", prompt,
             "-t", str(config.llama_threads),
             "-n", "512",
-            "--temp", "0.3"
+            "--temp", "0.3",
+            "-no-cnv"
         ]
         
         result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8")
