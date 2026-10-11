@@ -1,10 +1,10 @@
 # AMEVA Edge Agent - 원터치 자동 배포 및 빌드/설치 스크립트
-# Usage: .\deploy_and_setup.ps1 -sshHost 192.168.0.220 -sshPort 8022 -sshUser a0_a30 -sshKey C:\Users\ATSAdmin\.ssh\id_ed25519
+# Usage: .\deploy_and_setup.ps1 -sshHost <SSH_HOST> -sshPort 8022 -sshUser <SSH_USER> -sshKey <PATH_TO_KEY>
 
 param (
-    [string]$sshHost = "192.168.0.220",
-    [int]$sshPort = 8022,
-    [string]$sshUser = "a0_a30",
+    [string]$sshHost = $(if ($env:TESTBED_SSH_HOST) { $env:TESTBED_SSH_HOST } else { "127.0.0.1" }),
+    [int]$sshPort = $(if ($env:TESTBED_SSH_PORT) { [int]$env:TESTBED_SSH_PORT } else { 8022 }),
+    [string]$sshUser = $(if ($env:TESTBED_SSH_USER) { $env:TESTBED_SSH_USER } else { "termux" }),
     [string]$sshKey = ""
 )
 
@@ -17,8 +17,8 @@ Write-Host "===================================================" -ForegroundColo
 
 # 1. SSH 키 감지 및 확인
 if ([string]::IsNullOrEmpty($sshKey)) {
-    $defaultEd25519 = "C:\Users\ATSAdmin\.ssh\id_ed25519"
-    $defaultRsa = "C:\Users\ATSAdmin\.ssh\id_rsa"
+    $defaultEd25519 = Join-Path $HOME ".ssh\id_ed25519"
+    $defaultRsa = Join-Path $HOME ".ssh\id_rsa"
     
     if (Test-Path $defaultEd25519) {
         $sshKey = $defaultEd25519
