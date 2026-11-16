@@ -152,7 +152,7 @@ flowchart LR
 ## 5. 연락처 (Contact)
 
 - **GitHub**: [@uno-km](https://github.com/uno-km)
-- **Email**: zhfldk014745@naver.com
+- **Email**: amv.foundation.kr@gmail.com
 - **Research Focus**: MLOps Data Acquisition, Edge-native Inference, Data Sovereignty, Anti-Forensics Architecture
 
 *Last Updated: June 15, 2026*
